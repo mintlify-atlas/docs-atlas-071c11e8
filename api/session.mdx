@@ -1,0 +1,137 @@
+---
+title: session
+description: Manage browser sessions, cookies, cache, proxy settings, and extensions in the main process.
+---
+
+The `session` module lets you create and manage browser session objects. A session controls cookies, cache, proxy settings, permissions, network state, and extensions for the web pages that use it. Each `BrowserWindow` uses a session, accessible via `win.webContents.session`.
+
+<Note>
+  `session` is only available in the **main process**.
+</Note>
+
+## Module methods
+
+### `session.fromPartition(partition[, options])`
+
+Returns or creates a `Session` for the given partition string.
+
+<ParamField path="partition" type="string" required>
+  Use a `persist:` prefix (e.g. `'persist:main'`) for a persistent session shared across windows. Without the prefix, the session is in-memory. An empty string returns the default session.
+</ParamField>
+<ParamField path="options.cache" type="boolean" default="true">
+  Whether to enable the HTTP cache for this session.
+</ParamField>
+
+### `session.fromPath(path[, options])`
+
+Returns or creates a `Session` stored at the given absolute directory path.
+
+<ParamField path="path" type="string" required>
+  Absolute path to the session data directory.
+</ParamField>
+
+## Module properties
+
+### `session.defaultSession`
+
+The default `Session` instance used by the app. Available after `app.whenReady()` resolves.
+
+## Class: Session
+
+### Key instance events
+
+#### `will-download`
+
+Emitted when Electron is about to download a file. Call `event.preventDefault()` to cancel the download and handle it yourself.
+
+<ParamField path="item" type="DownloadItem" required>
+  The download item. You can set save path, listen for progress, etc.
+</ParamField>
+<ParamField path="webContents" type="WebContents" required>
+  The web contents that triggered the download.
+</ParamField>
+
+#### `extension-loaded` / `extension-ready` / `extension-unloaded`
+
+Fired as Chrome extensions transition through their lifecycle in this session.
+
+### Key instance methods
+
+#### `ses.clearCache()`
+
+Returns `Promise<void>` — clears the session's HTTP cache.
+
+#### `ses.clearStorageData([options])`
+
+Returns `Promise<void>` — clears storage data (cookies, localStorage, IndexedDB, etc.).
+
+<ParamField path="options.origin" type="string">
+  Clear data only for this origin (e.g. `'https://example.com'`). Omit to clear all origins.
+</ParamField>
+<ParamField path="options.storages" type="string[]">
+  Storage types to clear: `'appcache'`, `'cookies'`, `'filesystem'`, `'indexdb'`, `'localstorage'`, `'shadercache'`, `'websql'`, `'serviceworkers'`. Defaults to all.
+</ParamField>
+
+#### `ses.getCacheSize()`
+
+Returns `Promise<Integer>` — the current cache size in bytes.
+
+#### `ses.getUserAgent()`
+
+Returns `string` — the custom user-agent string for this session, or the app's default if not overridden.
+
+#### `ses.setProxy(config)`
+
+Returns `Promise<void>` — sets the proxy configuration.
+
+<ParamField path="config.proxyRules" type="string">
+  Proxy rules string, e.g. `'socks5://127.0.0.1:1080'`.
+</ParamField>
+<ParamField path="config.proxyBypassRules" type="string">
+  Comma-separated list of hosts that bypass the proxy.
+</ParamField>
+
+#### `ses.loadExtension(path[, options])`
+
+Returns `Promise<Extension>` — loads a Chrome extension from disk.
+
+<ParamField path="path" type="string" required>
+  Absolute path to the unpacked extension directory.
+</ParamField>
+
+## Example
+
+```javascript main.js
+const { app, BrowserWindow, session } = require('electron')
+
+app.whenReady().then(() => {
+  // Use a persistent named session
+  const ses = session.fromPartition('persist:main')
+
+  ses.on('will-download', (event, item) => {
+    const savePath = `/tmp/${item.getFilename()}`
+    item.setSavePath(savePath)
+
+    item.on('updated', (_, state) => {
+      if (state === 'progressing') {
+        console.log(`Downloaded ${item.getReceivedBytes()} / ${item.getTotalBytes()} bytes`)
+      }
+    })
+
+    item.once('done', (_, state) => {
+      console.log(state === 'completed' ? 'Download complete' : 'Download failed')
+    })
+  })
+
+  const win = new BrowserWindow({
+    webPreferences: { session: ses },
+  })
+
+  win.loadURL('https://github.com')
+})
+```
+
+## Related APIs
+
+- [BrowserWindow](/api/browser-window) — access a window's session via `win.webContents.session`
+- [protocol](/api/protocol) — register custom URL protocols on a session

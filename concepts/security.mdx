@@ -1,0 +1,286 @@
+---
+title: "Security"
+description: "Best practices for building secure Electron apps"
+---
+
+Electron apps are not web pages running inside a browser sandbox. JavaScript in your app can access the filesystem, user shell, and native OS APIs. This power makes Electron useful, but it also means security mistakes have a larger blast radius than they would in a typical web app.
+
+The security of your Electron application depends on the security of all its components: Electron itself, Chromium, Node.js, and every npm dependency you include. You are responsible for keeping these up to date and following secure coding practices.
+
+<Warning>
+  Never load and execute remote code with Node.js integration enabled. Use only local files to execute Node.js code. When displaying remote content, use `<webview>` or `WebContentsView` with `nodeIntegration` disabled and `contextIsolation` enabled.
+</Warning>
+
+## Checklist
+
+Follow these recommendations to reduce your app's attack surface:
+
+1. [Only load secure content](#1-only-load-secure-content)
+2. [Do not enable Node.js integration for remote content](#2-do-not-enable-nodejs-integration-for-remote-content)
+3. [Enable context isolation](#3-enable-context-isolation)
+4. [Enable process sandboxing](#4-enable-process-sandboxing)
+5. [Handle session permission requests](#5-handle-session-permission-requests)
+6. [Do not disable webSecurity](#6-do-not-disable-websecurity)
+7. [Define a Content Security Policy](#7-define-a-content-security-policy)
+8. [Do not enable allowRunningInsecureContent](#8-do-not-enable-allowrunninginsecurecontent)
+9. [Validate IPC message senders](#9-validate-ipc-message-senders)
+10. [Do not expose raw Electron APIs to untrusted content](#10-do-not-expose-raw-electron-apis-to-untrusted-content)
+
+## Recommendations
+
+<AccordionGroup>
+
+  <Accordion title="1. Only load secure content">
+    Load all remote resources over `HTTPS`, `WSS`, or `FTPS`. Insecure protocols like `HTTP` are vulnerable to man-in-the-middle attacks that can intercept or modify data in transit.
+
+    ```js title="main.js"
+    // Bad
+    browserWindow.loadURL('http://example.com')
+
+    // Good
+    browserWindow.loadURL('https://example.com')
+    ```
+
+    ```html title="index.html"
+    <!-- Bad -->
+    <script crossorigin src="http://example.com/react.js"></script>
+
+    <!-- Good -->
+    <script crossorigin src="https://example.com/react.js"></script>
+    ```
+  </Accordion>
+
+  <Accordion title="2. Do not enable Node.js integration for remote content">
+    Never enable `nodeIntegration` in any renderer that loads remote content. A cross-site scripting (XSS) vulnerability in a renderer with Node.js integration becomes a remote code execution (RCE) vulnerability — an attacker can read files, spawn processes, and more.
+
+    ```js title="main.js"
+    // Bad
+    const mainWindow = new BrowserWindow({
+      webPreferences: {
+        nodeIntegration: true,
+        nodeIntegrationInWorker: true
+      }
+    })
+    mainWindow.loadURL('https://example.com')
+
+    // Good
+    const mainWindow = new BrowserWindow({
+      webPreferences: {
+        preload: path.join(app.getAppPath(), 'preload.js')
+      }
+    })
+    mainWindow.loadURL('https://example.com')
+    ```
+
+    When you disable Node.js integration, you can still expose controlled APIs to web content through a preload script and `contextBridge`. See [Context Isolation](/concepts/context-isolation).
+
+    <Note>
+      This is the default behavior in Electron since version 5.
+    </Note>
+  </Accordion>
+
+  <Accordion title="3. Enable context isolation">
+    Context isolation ensures preload scripts and Electron internals run in a separate JavaScript context from web content. Even when `nodeIntegration: false` is set, context isolation must also be enabled to prevent access to Node.js primitives.
+
+    ```js title="main.js"
+    const mainWindow = new BrowserWindow({
+      webPreferences: {
+        contextIsolation: true, // default since Electron 12
+        preload: path.join(__dirname, 'preload.js')
+      }
+    })
+    ```
+
+    <Note>
+      Context isolation is enabled by default since Electron 12. Disabling it also disables process sandboxing.
+    </Note>
+
+    See [Context Isolation](/concepts/context-isolation) for full details and migration guidance.
+  </Accordion>
+
+  <Accordion title="4. Enable process sandboxing">
+    Sandboxing uses the operating system to restrict what renderer processes can access. You should enable it for all renderers. Loading untrusted content in an unsandboxed process — including the main process — is not advisable.
+
+    ```js title="main.js"
+    const mainWindow = new BrowserWindow({
+      webPreferences: {
+        sandbox: true
+      }
+    })
+    ```
+
+    <Note>
+      Process sandboxing is enabled by default since Electron 20. Disabling context isolation also disables sandboxing.
+    </Note>
+  </Accordion>
+
+  <Accordion title="5. Handle session permission requests">
+    By default, Electron automatically approves all permission requests (camera, notifications, location, etc.). For production apps, register a handler to approve only what your app actually needs.
+
+    ```js title="main.js"
+    const { session } = require('electron')
+    const { URL } = require('node:url')
+
+    // Must be called after app.whenReady()
+    session.defaultSession.setPermissionRequestHandler(
+      (webContents, permission, callback) => {
+        const parsedUrl = new URL(webContents.getURL())
+
+        if (permission === 'notifications') {
+          callback(true)
+          return
+        }
+
+        // Deny requests from any source other than your trusted origin
+        if (parsedUrl.protocol !== 'https:' || parsedUrl.host !== 'example.com') {
+          return callback(false)
+        }
+
+        callback(true)
+      }
+    )
+    ```
+  </Accordion>
+
+  <Accordion title="6. Do not disable webSecurity">
+    Disabling `webSecurity` turns off the same-origin policy and sets `allowRunningInsecureContent` to `true`, allowing execution of scripts from any domain over any protocol.
+
+    ```js title="main.js"
+    // Bad
+    const mainWindow = new BrowserWindow({
+      webPreferences: {
+        webSecurity: false
+      }
+    })
+
+    // Good — webSecurity is true by default, just don't set it to false
+    const mainWindow = new BrowserWindow()
+    ```
+
+    ```html title="index.html"
+    <!-- Bad -->
+    <webview disablewebsecurity src="page.html"></webview>
+
+    <!-- Good -->
+    <webview src="page.html"></webview>
+    ```
+  </Accordion>
+
+  <Accordion title="7. Define a Content Security Policy">
+    A Content Security Policy (CSP) restricts which resources Electron can load for a given web page. It provides an additional layer of defense against XSS and data injection attacks.
+
+    <Tip>
+      Use the most restrictive policy your app can support. Start with `default-src 'none'` and add permissions as needed.
+    </Tip>
+
+    **Via HTTP header (preferred):**
+
+    ```js title="main.js"
+    const { session } = require('electron')
+
+    // Must be called after app.whenReady()
+    session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+      callback({
+        responseHeaders: {
+          ...details.responseHeaders,
+          'Content-Security-Policy': ["default-src 'none'"]
+        }
+      })
+    })
+    ```
+
+    **Via meta tag (for `file://` protocol):**
+
+    ```html title="index.html"
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'">
+    ```
+
+    **Example policy values:**
+
+    ```plaintext
+    # Bad — allows everything
+    Content-Security-Policy: *
+
+    # Good — allows scripts only from self and a trusted API host
+    Content-Security-Policy: script-src 'self' https://apis.example.com
+    ```
+  </Accordion>
+
+  <Accordion title="8. Do not enable allowRunningInsecureContent">
+    By default, Electron blocks mixed content — pages loaded over `HTTPS` cannot load scripts, CSS, or plugins from `HTTP` sources. Setting `allowRunningInsecureContent: true` removes this protection.
+
+    ```js title="main.js"
+    // Bad
+    const mainWindow = new BrowserWindow({
+      webPreferences: {
+        allowRunningInsecureContent: true
+      }
+    })
+
+    // Good — this option is false by default
+    const mainWindow = new BrowserWindow({})
+    ```
+  </Accordion>
+
+  <Accordion title="9. Validate IPC message senders">
+    Any web frame — including iframes and child windows — can in theory send IPC messages to the main process. If your IPC handlers return sensitive data or perform privileged actions, always validate that the message came from a trusted source.
+
+    ```js title="main.js"
+    // Bad — returns secrets to any renderer that asks
+    ipcMain.handle('get-secrets', () => {
+      return getSecrets()
+    })
+
+    // Good — validates the sender's origin first
+    ipcMain.handle('get-secrets', (e) => {
+      if (!validateSender(e.senderFrame)) return null
+      return getSecrets()
+    })
+
+    function validateSender(frame) {
+      // Use a URL parser, not string matching — "startsWith" can be fooled
+      if (new URL(frame.url).host === 'electronjs.org') return true
+      return false
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="10. Do not expose raw Electron APIs to untrusted content">
+    Exposing `ipcRenderer.on` directly gives the renderer access to the entire IPC event system. Even passing a callback directly to `ipcRenderer.on` is dangerous — the first argument to IPC callbacks is an `IpcRendererEvent` that includes a `sender` property exposing the underlying `ipcRenderer` instance.
+
+    ```js title="preload.js"
+    // Bad — exposes the full IPC system
+    contextBridge.exposeInMainWorld('electronAPI', {
+      on: ipcRenderer.on
+    })
+
+    // Also bad — leaks ipcRenderer via event.sender
+    contextBridge.exposeInMainWorld('electronAPI', {
+      onUpdateCounter: (callback) => ipcRenderer.on('update-counter', callback)
+    })
+
+    // Good — the renderer only receives the value, not the event object
+    contextBridge.exposeInMainWorld('electronAPI', {
+      onUpdateCounter: (callback) =>
+        ipcRenderer.on('update-counter', (_event, value) => callback(value))
+    })
+    ```
+  </Accordion>
+
+</AccordionGroup>
+
+## Additional recommendations
+
+The checklist above covers the most critical recommendations. The full list of security best practices also includes:
+
+- **Limit navigation** — If your app doesn't need to navigate to arbitrary URLs, use a `will-navigate` handler to restrict navigation to a known allowlist.
+- **Limit new window creation** — Use `setWindowOpenHandler` to prevent unexpected windows from being created.
+- **Avoid `shell.openExternal` with untrusted content** — Passing user-controlled data to `shell.openExternal` can allow arbitrary command execution.
+- **Keep Electron up to date** — Running an old version of Electron means running old versions of Chromium and Node.js, where more exploits are publicly known.
+- **Use custom protocols instead of `file://`** — The `file://` protocol grants broad filesystem access. Custom protocols let you control exactly what can be loaded.
+- **Check Electron Fuses** — Fuses let you disable features like `runAsNode` that could allow your app to be misused from the command line.
+- **Do not enable experimental or Blink features** — `experimentalFeatures` and `enableBlinkFeatures` enable untested code paths. Only use them if you know exactly what you're enabling and why.
+
+<Tip>
+  Electron prints security warnings to the developer console when it detects potentially unsafe configurations. Keep an eye on these during development. You can control them with `ELECTRON_ENABLE_SECURITY_WARNINGS` and `ELECTRON_DISABLE_SECURITY_WARNINGS` environment variables.
+</Tip>

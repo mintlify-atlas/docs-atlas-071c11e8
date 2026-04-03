@@ -1,97 +1,88 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "Electron Documentation"
+description: "Build cross-platform desktop apps with JavaScript, HTML, and CSS — powered by Chromium and Node.js."
 ---
 
-## Setting up
+Electron lets you create native desktop applications for Windows, macOS, and Linux using web technologies you already know. It embeds Chromium for rendering and Node.js for system access, so you can use any npm package and access native APIs alongside your HTML/CSS/JS frontend.
 
-Get your documentation site up and running in minutes.
-
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Build and run your first Electron app in minutes.
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Installation" icon="download" href="/installation">
+    Install Electron and set up your development environment.
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Process Model" icon="diagram-project" href="/concepts/process-model">
+    Understand how Electron's main and renderer processes work together.
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="API Reference" icon="code" href="/api/app">
+    Browse the full API for every Electron module.
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## Build your first app
 
-Everything you need to create world-class documentation.
+<Steps>
+  <Step title="Install Electron">
+    Add Electron as a dev dependency to your project.
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+    ```bash
+    npm install electron --save-dev
+    ```
+  </Step>
+  <Step title="Create your main process file">
+    Create `main.js` to manage your app's lifecycle and windows.
 
-## Need inspiration?
+    ```javascript main.js
+    const { app, BrowserWindow } = require('electron')
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+    function createWindow() {
+      const win = new BrowserWindow({ width: 800, height: 600 })
+      win.loadFile('index.html')
+    }
+
+    app.whenReady().then(createWindow)
+    ```
+  </Step>
+  <Step title="Add your HTML page">
+    Create `index.html` as your renderer entry point.
+
+    ```html index.html
+    <!DOCTYPE html>
+    <html>
+      <head><title>My Electron App</title></head>
+      <body><h1>Hello from Electron!</h1></body>
+    </html>
+    ```
+  </Step>
+  <Step title="Run it">
+    Launch your app with the `electron` command.
+
+    ```bash
+    npx electron .
+    ```
+  </Step>
+</Steps>
+
+## Explore by topic
+
+<CardGroup cols={2}>
+  <Card title="Inter-Process Communication" icon="arrows-left-right" href="/concepts/ipc">
+    Send messages between your main and renderer processes.
+  </Card>
+  <Card title="Security" icon="shield-halved" href="/concepts/security">
+    Best practices for building secure Electron applications.
+  </Card>
+  <Card title="Window Customization" icon="window-maximize" href="/guides/window-customization">
+    Control window chrome, frameless windows, and vibrancy effects.
+  </Card>
+  <Card title="App Distribution" icon="box-open" href="/distribution/overview">
+    Package and distribute your app to end users.
+  </Card>
+  <Card title="Native Menus" icon="bars" href="/guides/menus">
+    Build application menus and context menus with the Menu API.
+  </Card>
+  <Card title="Auto Updates" icon="arrows-rotate" href="/distribution/auto-updates">
+    Ship seamless over-the-air updates with autoUpdater.
+  </Card>
+</CardGroup>

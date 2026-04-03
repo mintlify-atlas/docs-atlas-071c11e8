@@ -1,0 +1,172 @@
+---
+title: "Code Signing"
+description: "Sign your app to pass OS security checks"
+---
+
+Code signing is a security technology that certifies an app was created by you and has not been modified since you built it. Both macOS and Windows have built-in mechanisms that warn users about — or outright block — apps that are not signed.
+
+- **macOS Gatekeeper** displays a warning that the app "is damaged and can't be opened" or "cannot be opened because it is from an unidentified developer" for unsigned or improperly signed apps.
+- **Windows SmartScreen** shows a blue "Windows protected your PC" dialog for apps that lack a valid signature or have insufficient reputation.
+
+If you are packaging an Electron app for distribution, you should sign it. Electron's tooling makes this straightforward for both platforms.
+
+<Tabs>
+  <Tab title="macOS">
+    ## Signing and notarizing macOS builds
+
+    Distributing a macOS app requires two steps:
+
+    1. **Code signing** — Sign the app bundle with a Developer ID certificate.
+    2. **Notarization** — Upload the signed app to Apple's servers for automated security checks. Apple returns a "ticket" that you staple to the app. macOS Gatekeeper checks this ticket when users launch the app.
+
+    ### Prerequisites
+
+    Before you can sign and notarize, make sure you have:
+
+    1. Enrolled in the [Apple Developer Program](https://developer.apple.com/programs/) (requires an annual fee).
+    2. Downloaded and installed [Xcode](https://developer.apple.com/xcode/) — required on macOS.
+    3. Generated, downloaded, and installed a **Developer ID Application** [signing certificate](https://developer.apple.com/support/certificates/) in your Keychain.
+
+    ### Using Electron Forge
+
+    Forge handles signing and notarization through `packagerConfig`. Add `osxSign` and `osxNotarize` to your `forge.config.js`:
+
+    ```javascript forge.config.js
+    module.exports = {
+      packagerConfig: {
+        osxSign: {},
+        osxNotarize: {
+          tool: 'notarytool',
+          appleId: process.env.APPLE_ID,
+          appleIdPassword: process.env.APPLE_PASSWORD,
+          teamId: process.env.APPLE_TEAM_ID,
+        },
+      },
+      // ...
+    }
+    ```
+
+    <Note>
+    Store your Apple credentials in environment variables rather than committing them to source control. `APPLE_ID` is your Apple Developer account email, `APPLE_PASSWORD` is an [app-specific password](https://support.apple.com/en-us/102654), and `APPLE_TEAM_ID` is your 10-character Team ID from the Apple Developer portal.
+    </Note>
+
+    For the full set of configuration options, see the [Electron Forge macOS code signing guide](https://www.electronforge.io/guides/code-signing/code-signing-macos).
+
+    ### Using Electron Packager directly
+
+    If you are using `@electron/packager` outside of Forge, pass `osxSign` and `osxNotarize` options to the `packager()` call:
+
+    ```javascript sign.js
+    const packager = require('@electron/packager')
+
+    packager({
+      dir: '/path/to/my/app',
+      osxSign: {},
+      osxNotarize: {
+        appleId: process.env.APPLE_ID,
+        appleIdPassword: process.env.APPLE_PASSWORD,
+      },
+    })
+    ```
+
+    `@electron/packager` delegates signing to [`@electron/osx-sign`](https://github.com/electron/osx-sign) and notarization to [`@electron/notarize`](https://github.com/electron/notarize). Refer to those packages for advanced configuration.
+  </Tab>
+
+  <Tab title="Windows">
+    ## Signing Windows builds
+
+    ### Certificate requirements
+
+    Since June 2023, Microsoft requires Windows software to be signed with an **Extended Validation (EV) code signing certificate**. Standard OV (software-based) certificates no longer suppress SmartScreen warnings — Windows treats apps signed with them as unsigned.
+
+    EV certificates must be stored on a hardware security module (HSM) compliant with FIPS 140 Level 2 or Common Criteria EAL 4+. In practice this means a physical USB token or a cloud-based signing service — you cannot download the private key to a CI server.
+
+    Many certificate providers offer **cloud-based signing**, where the HSM lives in their data center and you sign via an API. This is the recommended approach for CI pipelines such as GitHub Actions or CircleCI.
+
+    Popular EV certificate providers include:
+
+    - [DigiCert KeyLocker](https://docs.digicert.com/en/digicert-keylocker.html)
+    - [Certum EV](https://shop.certum.eu/data-safety/code-signing-certificates/certum-ev-code-sigining.html)
+    - [GlobalSign EV](https://www.globalsign.com/en/code-signing-certificate/ev-code-signing-certificates)
+    - [SSL.com EV](https://www.ssl.com/certificates/ev-code-signing/)
+    - [Sectigo EV](https://sectigo.com/ssl-certificates-tls/code-signing)
+
+    ### Azure Trusted Signing
+
+    [Azure Trusted Signing](https://azure.microsoft.com/en-us/products/trusted-signing) is Microsoft's cloud-based alternative to traditional EV certificates. It eliminates SmartScreen warnings and is the cheapest option available. As of October 2025 it is available to US and Canada-based organizations with 3+ years of verifiable business history and to individual developers in the same regions.
+
+    ### Using Electron Forge
+
+    Forge exposes Windows signing through the `windowsSign` property on each maker. For a Squirrel.Windows installer:
+
+    ```javascript forge.config.js
+    module.exports = {
+      makers: [
+        {
+          name: '@electron-forge/maker-squirrel',
+          config: {
+            certificateFile: './cert.pfx',
+            certificatePassword: process.env.CERTIFICATE_PASSWORD,
+          },
+        },
+      ],
+    }
+    ```
+
+    For cloud-based signing tools, use `windowsSign.signWithParams` to pass parameters to `signtool.exe` or a custom tool:
+
+    ```javascript forge.config.js
+    module.exports = {
+      packagerConfig: {
+        windowsSign: {
+          signWithParams: '--my=custom --parameters',
+          signToolPath: 'C:\\Path\\To\\my-custom-tool.exe',
+        },
+      },
+      // ...
+    }
+    ```
+
+    See the [Electron Forge Windows code signing guide](https://www.electronforge.io/guides/code-signing/code-signing-windows) for detailed setup instructions including Azure Trusted Signing.
+
+    ### Using Electron Packager directly
+
+    If you are using `@electron/packager` outside of Forge, pass a `windowsSign` configuration object:
+
+    ```javascript sign.js
+    const packager = require('@electron/packager')
+
+    packager({
+      dir: '/path/to/my/app',
+      windowsSign: {
+        signWithParams: '--my=custom --parameters',
+        signToolPath: 'C:\\Path\\To\\my-custom-tool.exe',
+      },
+    })
+    ```
+
+    All Windows signing in the Electron ecosystem is handled by [`@electron/windows-sign`](https://github.com/electron/windows-sign). The same `windowsSign` configuration works with `@electron/packager`, [`electron-winstaller`](https://github.com/electron/windows-installer), and [`electron-wix-msi`](https://github.com/electron-userland/electron-wix-msi).
+
+    ### jsign for Linux/macOS CI
+
+    If you are building on Linux or macOS and need to sign Windows binaries via Azure Trusted Signing, you can use [`jsign`](https://ebourg.github.io/jsign/):
+
+    ```bash
+    jsign --storetype TRUSTEDSIGNING \
+          --keystore https://eus.codesigning.azure.net/ \
+          --storepass $AZURE_ACCESS_TOKEN \
+          --alias trusted-sign-acct/AppName \
+          --tsaurl http://timestamp.acs.microsoft.com/ \
+          --tsmode RFC3161 \
+          --replace <file>
+    ```
+  </Tab>
+</Tabs>
+
+## Next steps
+
+Once your app is signed, you can set up auto-updates so users receive new versions automatically.
+
+<Card title="Auto updates" icon="arrow-rotate-right" href="/distribution/auto-updates">
+  Ship over-the-air updates with `autoUpdater` and update.electronjs.org.
+</Card>

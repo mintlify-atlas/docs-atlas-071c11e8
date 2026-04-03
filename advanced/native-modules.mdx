@@ -1,0 +1,204 @@
+---
+title: "Native Node Modules"
+description: "Use native Node.js addons in your Electron app"
+---
+
+Native Node.js modules (`.node` files built from C++ source) are supported in Electron, but they cannot be used as-is from a standard `npm install`. Because Electron embeds a different version of Node.js than the one on your system—and uses Chromium's BoringSSL instead of OpenSSL—its [Application Binary Interface (ABI)](https://en.wikipedia.org/wiki/Application_binary_interface) differs from the Node.js ABI that native modules are compiled against by default.
+
+If you try to load an unrebuild native module, you will see an error like this:
+
+```sh
+Error: The module '/path/to/native/module.node'
+was compiled against a different Node.js version using
+NODE_MODULE_VERSION $XYZ. This version of Node.js requires
+NODE_MODULE_VERSION $ABC. Please try re-compiling or re-installing
+the module (for instance, using `npm rebuild` or `npm install`).
+```
+
+<Warning>
+  You must rebuild native modules every time you upgrade Electron. A module built for Electron 28 will not load in Electron 29 without a rebuild.
+</Warning>
+
+## Installation methods
+
+<Tabs>
+  <Tab title="electron-rebuild (recommended)">
+    [`@electron/rebuild`](https://github.com/electron/rebuild) is the recommended way to rebuild native modules. It automatically detects your installed Electron version, downloads the correct headers, and rebuilds all native dependencies.
+
+    <Steps>
+      <Step title="Install electron-rebuild">
+        ```sh
+        npm install --save-dev @electron/rebuild
+        ```
+      </Step>
+
+      <Step title="Rebuild after npm install">
+        Run `electron-rebuild` after every `npm install`:
+
+        ```sh
+        # macOS / Linux
+        ./node_modules/.bin/electron-rebuild
+
+        # Windows
+        .\node_modules\.bin\electron-rebuild.cmd
+        ```
+      </Step>
+
+      <Step title="Automate the rebuild step">
+        Add a `postinstall` script to your `package.json` so the rebuild runs automatically after every install:
+
+        ```json package.json
+        {
+          "scripts": {
+            "postinstall": "electron-rebuild"
+          }
+        }
+        ```
+      </Step>
+    </Steps>
+
+    <Note>
+      If you use [Electron Forge](https://electronforge.io/), `@electron/rebuild` is already integrated and runs automatically in development mode and during packaging.
+    </Note>
+  </Tab>
+
+  <Tab title="npm environment variables">
+    You can configure `npm` to build native modules for Electron directly by setting environment variables before running `npm install`:
+
+    ```sh
+    # Set the target Electron version
+    export npm_config_target=1.2.3
+
+    # Set the target architecture
+    export npm_config_arch=x64
+    export npm_config_target_arch=x64
+
+    # Point to Electron's header downloads
+    export npm_config_disturl=https://electronjs.org/headers
+
+    # Tell node-pre-gyp this is an Electron build
+    export npm_config_runtime=electron
+
+    # Force building from source
+    export npm_config_build_from_source=true
+
+    # Install all dependencies, caching headers to ~/.electron-gyp
+    HOME=~/.electron-gyp npm install
+    ```
+
+    <Note>
+      This approach is useful in CI environments where you want to install and rebuild in one step without a separate `electron-rebuild` invocation.
+    </Note>
+  </Tab>
+
+  <Tab title="node-gyp (manual)">
+    If you are developing a native module and want to test it directly against Electron, you can rebuild it manually using `node-gyp`:
+
+    ```sh
+    cd /path/to/your/module
+
+    HOME=~/.electron-gyp node-gyp rebuild \
+      --target=1.2.3 \
+      --arch=x64 \
+      --dist-url=https://electronjs.org/headers
+    ```
+
+    - `HOME=~/.electron-gyp` — tells node-gyp where to cache Electron's development headers
+    - `--target` — the Electron version to build against
+    - `--dist-url` — where to download Electron headers (instead of Node.js headers)
+    - `--arch` — the target CPU architecture
+
+    For a custom Electron build that does not match a public release, point `npm rebuild` at your local build's headers:
+
+    ```sh
+    npm rebuild --nodedir=/path/to/src/out/Default/gen/node_headers
+    ```
+  </Tab>
+</Tabs>
+
+## Prebuilt binaries
+
+Some native modules distribute prebuilt binaries so you do not need to compile from source at all.
+
+<AccordionGroup>
+  <Accordion title="prebuild and prebuildify" icon="box">
+    [`prebuild`](https://github.com/prebuild/prebuild) and [`prebuildify`](https://github.com/prebuild/prebuildify) let module authors publish precompiled `.node` files for multiple versions of Node.js and Electron.
+
+    If a module you depend on uses `prebuild`, do **not** pass `--build-from-source` or set `npm_config_build_from_source`. Doing so forces a local compilation and bypasses the prebuilt binaries entirely.
+
+    ```sh
+    # Correct: allows prebuild to supply the right binary
+    npm install some-native-module
+
+    # Incorrect: forces source compilation, ignores prebuilts
+    npm install some-native-module --build-from-source
+    ```
+  </Accordion>
+
+  <Accordion title="node-pre-gyp" icon="wrench">
+    [`node-pre-gyp`](https://github.com/mapbox/node-pre-gyp) is another prebuilt binary distribution tool used by many popular modules (including `sqlite3` and `bcrypt`).
+
+    These modules work with Electron when Electron-specific binaries are available. When they are not, you need to compile from source. The recommended approach is to use `@electron/rebuild`, which handles the `node-pre-gyp` case automatically.
+
+    If you install with `npm` directly, pass `--build-from-source`:
+
+    ```sh
+    npm install some-node-pre-gyp-module --build-from-source
+    ```
+
+    Or set the environment variable:
+
+    ```sh
+    export npm_config_build_from_source=true
+    npm install some-node-pre-gyp-module
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Windows: the delay-load hook
+
+On Windows, Electron 4.x and later exports Node.js symbols from `electron.exe` rather than `node.dll`. For native modules to load correctly, `node-gyp` installs a delay-load hook that redirects symbol resolution to the running executable.
+
+This hook is required. If it is missing or disabled, you will see errors like:
+
+```sh
+Module did not self-register
+The specified procedure could not be found
+```
+
+Make sure `win_delay_load_hook` is set to `'true'` in your module's `binding.gyp` and is not overridden anywhere in your build system:
+
+```json binding.gyp
+{
+  "targets": [{
+    "target_name": "your_module",
+    "variables": {
+      "win_delay_load_hook": "true"
+    }
+  }]
+}
+```
+
+<Warning>
+  If you link against `node.lib` from the system Node.js instead of from Electron, you will get load-time errors. Always use the `node.lib` that ships with your Electron version.
+</Warning>
+
+## Troubleshooting
+
+If a native module fails to load after installation, work through this checklist:
+
+1. **Run `@electron/rebuild` first.** Most issues are solved by a clean rebuild against the correct Electron version.
+2. **Check platform and architecture compatibility.** Confirm the module supports your target OS and CPU architecture.
+3. **Check `win_delay_load_hook` on Windows.** Verify the value is `'true'` in `binding.gyp` and has not been overridden.
+4. **Rebuild after upgrading Electron.** Native modules are not forward-compatible between Electron versions.
+
+## Related pages
+
+<CardGroup cols={2}>
+  <Card title="Automated Testing" icon="flask" href="/advanced/testing">
+    Set up end-to-end tests for your Electron app, including headless CI configuration.
+  </Card>
+  <Card title="Performance" icon="gauge" href="/advanced/performance">
+    Profile and optimize startup time, memory usage, and runtime responsiveness.
+  </Card>
+</CardGroup>

@@ -1,0 +1,122 @@
+---
+title: "clipboard"
+description: "Read and write text, HTML, images, and other data to the system clipboard."
+---
+
+The `clipboard` module provides access to the operating system clipboard. You can read and write plain text, HTML markup, RTF, images, and bookmarks.
+
+<Warning>
+  Using `clipboard` directly from a renderer process is **deprecated**. Call it from the main process or a preload script, and expose what you need via [`contextBridge`](/api/context-bridge).
+</Warning>
+
+<Note>
+  On Linux, a secondary `'selection'` clipboard is available. Pass `'selection'` as the `type` argument to any method to target it.
+</Note>
+
+## Text
+
+### `clipboard.readText([type])`
+
+Returns `string` — the clipboard contents as plain text.
+
+<ParamField path="type" type="string">
+  `'clipboard'` (default) or `'selection'` (Linux only).
+</ParamField>
+
+### `clipboard.writeText(text[, type])`
+
+Writes plain text to the clipboard.
+
+<ParamField path="text" type="string" required>
+  Text to write.
+</ParamField>
+
+<ParamField path="type" type="string">
+  `'clipboard'` (default) or `'selection'` (Linux only).
+</ParamField>
+
+## HTML
+
+### `clipboard.readHTML([type])`
+
+Returns `string` — clipboard contents as an HTML string. The browser wraps the value in a `<meta charset>` tag.
+
+### `clipboard.writeHTML(markup[, type])`
+
+Writes an HTML string to the clipboard.
+
+<ParamField path="markup" type="string" required>
+  HTML markup to write.
+</ParamField>
+
+## Images
+
+### `clipboard.readImage([type])`
+
+Returns [`NativeImage`](/api/native-image) — the image currently on the clipboard.
+
+### `clipboard.writeImage(image[, type])`
+
+Writes a `NativeImage` to the clipboard.
+
+<ParamField path="image" type="NativeImage" required>
+  Image to write. See [`nativeImage`](/api/native-image) for how to create one.
+</ParamField>
+
+## Writing multiple formats at once
+
+### `clipboard.write(data[, type])`
+
+Writes multiple formats to the clipboard in a single operation.
+
+<ParamField path="data" type="Object" required>
+  Object with any combination of `text`, `html`, `image`, `rtf`, and `bookmark` keys.
+</ParamField>
+
+## Other methods
+
+| Method | Returns | Description |
+|---|---|---|
+| `clipboard.readRTF([type])` | `string` | Clipboard content as RTF. |
+| `clipboard.writeRTF(text[, type])` | — | Write RTF to the clipboard. |
+| `clipboard.readBookmark()` | `{ title, url }` | _macOS/Windows._ Read a bookmark (title + URL). |
+| `clipboard.writeBookmark(title, url[, type])` | — | _macOS/Windows._ Write a bookmark. |
+| `clipboard.readFindText()` | `string` | _macOS._ Text in the Find pasteboard. |
+| `clipboard.writeFindText(text)` | — | _macOS._ Write to the Find pasteboard. |
+| `clipboard.availableFormats([type])` | `string[]` | Formats currently on the clipboard. |
+| `clipboard.clear([type])` | — | Clear the clipboard. |
+
+## Example
+
+```js title="main.js"
+const { clipboard, ipcMain } = require('electron')
+
+// Copy text to clipboard
+ipcMain.handle('clipboard:writeText', (_event, text) => {
+  clipboard.writeText(text)
+})
+
+// Read text from clipboard
+ipcMain.handle('clipboard:readText', () => {
+  return clipboard.readText()
+})
+
+// Write rich content in one call
+ipcMain.handle('clipboard:writeRich', (_event, { text, html }) => {
+  clipboard.write({ text, html })
+})
+```
+
+```js title="preload.js"
+const { contextBridge, ipcRenderer } = require('electron')
+
+contextBridge.exposeInMainWorld('clipboard', {
+  writeText: (text) => ipcRenderer.invoke('clipboard:writeText', text),
+  readText: () => ipcRenderer.invoke('clipboard:readText'),
+  writeRich: (data) => ipcRenderer.invoke('clipboard:writeRich', data)
+})
+```
+
+## Process availability
+
+`clipboard` is available in the **main process** and non-sandboxed **renderer processes**. Direct use from a renderer is deprecated — prefer calling it via IPC from the main process.

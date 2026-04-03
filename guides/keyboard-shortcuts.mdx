@@ -1,0 +1,199 @@
+---
+title: "Keyboard Shortcuts"
+description: "Register local and global keyboard shortcuts"
+---
+
+Electron supports two kinds of keyboard shortcuts: **local shortcuts** that work only when your app is focused, and **global shortcuts** that work even when your app is in the background.
+
+## Accelerator format
+
+Accelerators are strings that represent a keyboard shortcut. They consist of one or more modifier keys joined to a key code with `+`.
+
+```
+CmdOrCtrl+S
+Shift+Alt+F
+CommandOrControl+Shift+Z
+```
+
+Accelerators are **case-insensitive**.
+
+### Available modifiers
+
+| Modifier | Description |
+|----------|-------------|
+| `Command` / `Cmd` | Command key (macOS only). |
+| `Control` / `Ctrl` | Control key. |
+| `CommandOrControl` / `CmdOrCtrl` | Command on macOS, Control on Windows and Linux. |
+| `Alt` | Alt key on Windows/Linux, Option key on macOS. |
+| `Option` | Option key (macOS only). |
+| `AltGr` | AltGr key (Windows and Linux). |
+| `Shift` | Shift key. |
+| `Super` / `Meta` | Command (⌘) on macOS, Windows key (⊞) on Windows. |
+
+### Cross-platform behavior
+
+| Accelerator | macOS | Windows / Linux |
+|-------------|-------|-----------------|
+| `CmdOrCtrl` | ⌘ Command | Ctrl |
+| `Command` | ⌘ Command | No effect |
+| `Alt` | ⌥ Option | Alt |
+| `Option` | ⌥ Option | No effect |
+
+<Info>
+  Use `CmdOrCtrl` instead of `Command` for shortcuts that should work on all platforms. Similarly, use `Alt` instead of `Option` to support Windows and Linux users.
+</Info>
+
+### Common accelerator examples
+
+| Action | Accelerator |
+|--------|-------------|
+| Save | `CmdOrCtrl+S` |
+| Copy | `CmdOrCtrl+C` |
+| Paste | `CmdOrCtrl+V` |
+| Undo | `CmdOrCtrl+Z` |
+| Redo | `CmdOrCtrl+Shift+Z` |
+| Find | `CmdOrCtrl+F` |
+| New window | `CmdOrCtrl+N` |
+
+## Local shortcuts
+
+Local shortcuts are triggered only when your application is focused. You define them by setting an `accelerator` on a `MenuItem`. When the user presses the key combination, the item's `click` handler fires.
+
+```javascript title="main.js"
+const { app, Menu, MenuItem, dialog } = require('electron')
+
+app.whenReady().then(() => {
+  const menu = new Menu()
+
+  // On macOS, the first menu must be the app menu
+  if (process.platform === 'darwin') {
+    menu.append(new MenuItem({ role: 'appMenu' }))
+  }
+
+  const fileMenu = Menu.buildFromTemplate([
+    {
+      label: 'Open',
+      accelerator: 'CmdOrCtrl+O',
+      click: () => dialog.showOpenDialog({ properties: ['openFile'] })
+    },
+    {
+      label: 'Save',
+      accelerator: 'CmdOrCtrl+S',
+      click: () => console.log('Save triggered')
+    },
+    { type: 'separator' },
+    { role: 'quit' }
+  ])
+
+  menu.append(new MenuItem({ label: 'File', submenu: fileMenu }))
+  Menu.setApplicationMenu(menu)
+})
+```
+
+<Tip>
+  Accelerators remain active even when their menu item is hidden. On macOS, you can disable this by setting `acceleratorWorksWhenHidden: false` on the `MenuItem`.
+</Tip>
+
+<Tip>
+  On Windows and Linux, set `registerAccelerator: false` on a `MenuItem` to display the accelerator label in the menu without actually registering it as a shortcut.
+</Tip>
+
+## Global shortcuts
+
+Global shortcuts fire even when your application does not have keyboard focus. Use `globalShortcut.register` from the main process to set them up.
+
+<Warning>
+  Global shortcuts intercept the key combination system-wide. The key events are consumed by your app and will **not reach any other application or window** while the shortcut is registered. Avoid registering shortcuts that conflict with common OS shortcuts or that users might need in other apps.
+</Warning>
+
+### Registering a global shortcut
+
+Call `globalShortcut.register` inside the `app.whenReady()` callback. The method returns `false` if registration fails (for example, because another application already owns that shortcut).
+
+```javascript title="main.js"
+const { app, globalShortcut, dialog } = require('electron')
+
+app.whenReady().then(() => {
+  const registered = globalShortcut.register('CmdOrCtrl+Alt+K', () => {
+    dialog.showMessageBox({ message: 'Global shortcut fired!' })
+  })
+
+  if (!registered) {
+    console.warn('Global shortcut registration failed — shortcut may already be in use')
+  }
+})
+```
+
+### Checking registration status
+
+```javascript title="main.js"
+const isRegistered = globalShortcut.isRegistered('CmdOrCtrl+Alt+K')
+console.log('Shortcut registered:', isRegistered)
+```
+
+### Registering multiple shortcuts
+
+Use `globalShortcut.registerAll` to bind a single callback to multiple accelerators at once.
+
+```javascript title="main.js"
+globalShortcut.registerAll(['CmdOrCtrl+X', 'CmdOrCtrl+Y'], () => {
+  console.log('One of the registered shortcuts was pressed')
+})
+```
+
+### Unregistering shortcuts
+
+Always unregister global shortcuts when your app quits. The `will-quit` event is the right place to do this.
+
+```javascript title="main.js"
+app.on('will-quit', () => {
+  // Unregister a specific shortcut
+  globalShortcut.unregister('CmdOrCtrl+Alt+K')
+
+  // Or unregister everything at once
+  globalShortcut.unregisterAll()
+})
+```
+
+<Note>
+  On macOS, there is a known issue with `globalShortcut` that prevents it from working correctly with non-QWERTY keyboard layouts.
+</Note>
+
+## Shortcuts in the renderer process
+
+If you want to handle key events directly inside a window's web content, listen for `keydown` or `keyup` DOM events in the renderer.
+
+```javascript title="renderer.js"
+window.addEventListener('keyup', (event) => {
+  console.log('Key pressed:', event.key)
+}, true) // pass `true` to capture before other listeners
+```
+
+<Note>
+  Passing `true` as the third argument to `addEventListener` means this listener captures events before they reach other handlers, so `stopPropagation` in child elements won't block it.
+</Note>
+
+### Intercepting shortcuts in the main process
+
+Use the `before-input-event` on `webContents` to intercept `keydown` and `keyup` events before they reach the renderer. This lets you handle shortcuts without modifying renderer code.
+
+```javascript title="main.js"
+const { app, BrowserWindow } = require('electron')
+
+app.whenReady().then(() => {
+  const win = new BrowserWindow()
+  win.loadFile('index.html')
+
+  win.webContents.on('before-input-event', (event, input) => {
+    if (input.control && input.key.toLowerCase() === 's') {
+      console.log('Ctrl+S intercepted in main process')
+      event.preventDefault() // prevent the renderer from handling it
+    }
+  })
+})
+```
+
+## Further reading
+
+- [`Menu` API reference](/api/menu)
+- [Menus](/guides/menus)

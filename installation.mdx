@@ -1,0 +1,239 @@
+---
+title: "Installation"
+description: "Install Electron in your project"
+---
+
+## Basic installation
+
+The recommended way to install Electron is as a development dependency using npm:
+
+```bash
+npm install electron --save-dev
+```
+
+After installation, add a `start` script to your `package.json` so you can launch the app with `npm start`:
+
+```json package.json
+{
+  "name": "my-electron-app",
+  "version": "1.0.0",
+  "description": "My Electron application",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^29.0.0"
+  }
+}
+```
+
+<Info>
+  Electron is a dev dependency because the packaging step bundles the Electron binary directly into your distributable. You do not need it as a production dependency.
+</Info>
+
+## Platform support
+
+<Tabs>
+  <Tab title="macOS">
+    Electron supports **macOS Monterey (12) and later**.
+
+    - Apple silicon (arm64) and Intel (x64) are both supported natively.
+    - Universal binaries targeting both architectures are available for distribution.
+
+    We recommend using [Homebrew](https://brew.sh/) or [nvm](https://github.com/nvm-sh/nvm) to install Node.js on macOS to avoid directory permission issues with system-owned paths.
+  </Tab>
+  <Tab title="Windows">
+    Electron supports **Windows 10 and later** (both 32-bit and 64-bit).
+
+    - ARM64 builds are available for Windows on ARM devices.
+    - Do not use Windows Subsystem for Linux (WSL) for Electron development — run commands in Command Prompt or PowerShell instead.
+  </Tab>
+  <Tab title="Linux">
+    Electron supports **Ubuntu 18.04 and later**, as well as equivalent versions of Fedora, Debian, and other distributions.
+
+    - x64, arm64, and arm (32-bit) are all supported.
+    - Prebuilt binaries target Ubuntu. They may work on other distributions but are not officially tested.
+  </Tab>
+</Tabs>
+
+## Setting up a new project
+
+<Steps>
+  <Step title="Initialize your npm package">
+    Create a project folder and run `npm init` to generate `package.json`. Set `main.js` as your entry point when prompted.
+
+    ```bash
+    mkdir my-electron-app && cd my-electron-app
+    npm init
+    ```
+  </Step>
+
+  <Step title="Install Electron">
+    ```bash
+    npm install electron --save-dev
+    ```
+
+    This installs the Electron binary into `node_modules` and records it in `devDependencies`.
+  </Step>
+
+  <Step title="Configure your start script">
+    Add `electron .` as the `start` script in `package.json`:
+
+    ```json package.json
+    {
+      "name": "my-electron-app",
+      "version": "1.0.0",
+      "main": "main.js",
+      "scripts": {
+        "start": "electron ."
+      },
+      "devDependencies": {
+        "electron": "^29.0.0"
+      }
+    }
+    ```
+
+    Run your app with:
+
+    ```bash
+    npm start
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  Electron's packaging toolchain requires a standard `node_modules` folder on disk. If you use Yarn Berry or pnpm, configure them to use the `node-modules` node linker: set `nodeLinker: node-modules` in `.yarnrc.yml` for Yarn, or `nodeLinker: hoisted` in `.npmrc` for pnpm.
+</Note>
+
+## Running Electron without a project
+
+If you want to run Electron ad-hoc without a full `npm install`, use `npx`:
+
+```bash
+npx electron .
+```
+
+This downloads and runs Electron without adding it to your local `node_modules`. Note that any app dependencies you rely on will not be available.
+
+## Selecting an architecture
+
+By default, Electron downloads the binary that matches your machine's architecture. To override this, set `ELECTRON_INSTALL_ARCH` before running your install or start command:
+
+```bash
+ELECTRON_INSTALL_ARCH=x64 npm install electron --save-dev
+```
+
+Supported values:
+
+| Value   | Target                                        |
+| ------- | --------------------------------------------- |
+| `x64`   | Intel Mac and 64-bit Windows                  |
+| `ia32`  | 32-bit Windows                                |
+| `arm64` | Apple silicon, Windows on ARM, ARM64 Linux    |
+| `arm`   | 32-bit ARM Linux                              |
+
+## Native modules
+
+If your app uses native Node.js modules (npm packages with `.node` bindings), you need to recompile them against Electron's version of Node.js. Use [`@electron/rebuild`](https://github.com/electron/rebuild) to do this automatically:
+
+```bash
+npm install --save-dev @electron/rebuild
+npx electron-rebuild
+```
+
+Rebuild will detect all native modules in your `node_modules` folder and recompile them for the Electron version specified in your `package.json`.
+
+<Tip>
+  If you use Electron Forge, native module rebuilding is handled automatically as part of the build process.
+</Tip>
+
+## Mirrors and proxies
+
+### HTTP proxy
+
+If you are behind an HTTP proxy, set `ELECTRON_GET_USE_PROXY` along with the standard Node.js proxy environment variables before installing:
+
+```bash
+ELECTRON_GET_USE_PROXY=1 HTTPS_PROXY=https://proxy.example.com:8080 npm install electron --save-dev
+```
+
+### Custom download mirror
+
+By default, Electron downloads binaries from GitHub Releases. If GitHub is inaccessible from your network (for example, in mainland China), you can point Electron to a mirror using environment variables.
+
+The download URL is composed as:
+
+```
+ELECTRON_MIRROR + ELECTRON_CUSTOM_DIR + "/" + ELECTRON_CUSTOM_FILENAME
+```
+
+**China CDN mirror (npmmirror.com):**
+
+```bash
+ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/" npm install electron --save-dev
+```
+
+**China non-CDN mirror with custom directory format:**
+
+```bash
+ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/" \
+ELECTRON_CUSTOM_DIR="{{ version }}" \
+npm install electron --save-dev
+```
+
+The `{{ version }}` placeholder is replaced with the plain version number (e.g., `29.0.0`). The default `ELECTRON_CUSTOM_DIR` value is `v$VERSION` (e.g., `v29.0.0`).
+
+You can also persist these settings in a `.npmrc` file in your project:
+
+```ini .npmrc
+ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/"
+```
+
+### Local cache
+
+`@electron/get` (used internally by Electron) caches downloaded binaries locally to avoid repeat downloads. Cache locations by platform:
+
+| Platform | Default cache location                                 |
+| -------- | ------------------------------------------------------ |
+| Linux    | `$XDG_CACHE_HOME/electron/` or `~/.cache/electron/`   |
+| macOS    | `~/Library/Caches/electron/`                          |
+| Windows  | `$LOCALAPPDATA/electron/Cache/`                        |
+
+To use a custom cache directory, set `electron_config_cache`:
+
+```bash
+electron_config_cache=/path/to/cache npm install electron --save-dev
+```
+
+## Troubleshooting
+
+Most installation failures are caused by network issues rather than problems with the npm package itself. Errors such as `ELIFECYCLE`, `EAI_AGAIN`, `ECONNRESET`, and `ETIMEDOUT` all indicate a connectivity problem. Try switching networks or waiting before retrying.
+
+**Permission errors (`EACCESS`)**
+
+Fix your npm permissions, or use `sudo` with `--unsafe-perm` as a last resort:
+
+```bash
+sudo npm install electron --unsafe-perm=true
+```
+
+**Slow download with no progress**
+
+Use `--verbose` to see download progress:
+
+```bash
+npm install --verbose electron
+```
+
+**Force a fresh download**
+
+Set `force_no_cache=true` to skip the local cache and re-download:
+
+```bash
+force_no_cache=true npm install electron --save-dev
+```
+
+**Download directly**
+
+If `npm install` keeps failing, you can download the binary manually from [GitHub Releases](https://github.com/electron/electron/releases) and place it in the cache directory.

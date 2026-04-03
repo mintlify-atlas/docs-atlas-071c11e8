@@ -1,0 +1,111 @@
+---
+title: "shell"
+description: "Open files, folders, and URLs with their default applications."
+---
+
+The `shell` module integrates with the desktop environment, letting you open files and URLs in their default applications, reveal items in the file manager, move files to the trash, and more.
+
+<Warning>
+  `shell` is available in both the **main process** and non-sandboxed **renderer processes**. It does not work in sandboxed renderers. When calling from a renderer, use a preload script and expose only what you need via [`contextBridge`](/api/context-bridge).
+</Warning>
+
+## Methods
+
+### `shell.openExternal(url[, options])`
+
+Opens `url` in the system's default handler for that protocol — a web URL opens in the default browser, a `mailto:` link opens the mail client, and so on.
+
+**Returns** `Promise<void>`
+
+<ParamField path="url" type="string" required>
+  URL to open. Maximum 2081 characters on Windows.
+</ParamField>
+
+<ParamField path="options.activate" type="boolean">
+  _macOS only._ Bring the opened application to the foreground. Defaults to `true`.
+</ParamField>
+
+<ParamField path="options.workingDirectory" type="string">
+  _Windows only._ Working directory for the launched process.
+</ParamField>
+
+<ParamField path="options.logUsage" type="boolean">
+  _Windows only._ Marks the launch as user-initiated, enabling Windows usage tracking. Defaults to `false`.
+</ParamField>
+
+### `shell.openPath(path)`
+
+Opens `path` in the desktop's default application (e.g., a PDF opens in the default PDF viewer).
+
+**Returns** `Promise<string>` — resolves with an error message string on failure, or an empty string on success.
+
+<ParamField path="path" type="string" required>
+  Absolute path to the file to open.
+</ParamField>
+
+### `shell.showItemInFolder(fullPath)`
+
+Reveals `fullPath` in the system file manager (Finder, Explorer, Nautilus, etc.) and selects it if possible.
+
+<ParamField path="fullPath" type="string" required>
+  Absolute path to the file or folder to reveal.
+</ParamField>
+
+### `shell.trashItem(path)`
+
+Moves `path` to the OS trash (Trash on macOS, Recycle Bin on Windows, XDG trash on Linux).
+
+**Returns** `Promise<void>` — rejects if the item could not be trashed.
+
+<ParamField path="path" type="string" required>
+  Absolute path to the item to trash. Use `path.resolve()` to ensure correct separators on all platforms.
+</ParamField>
+
+### `shell.beep()`
+
+Plays the system alert sound.
+
+## Example: open links externally
+
+A common pattern is intercepting link clicks in your renderer so they open in the user's browser instead of a new Electron window.
+
+```js title="main.js"
+const { app, BrowserWindow, shell } = require('electron')
+
+app.whenReady().then(() => {
+  const win = new BrowserWindow({ width: 1024, height: 768 })
+
+  // Open all external links in the default browser
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith('https://')) {
+      shell.openExternal(url)
+    }
+    return { action: 'deny' }
+  })
+
+  win.loadFile('index.html')
+})
+```
+
+## Example: reveal a saved file
+
+```js title="main.js"
+const { ipcMain, shell } = require('electron')
+const path = require('node:path')
+const fs = require('node:fs')
+
+ipcMain.handle('save-and-reveal', async (_event, content) => {
+  const filePath = path.join(app.getPath('downloads'), 'export.txt')
+  fs.writeFileSync(filePath, content)
+  shell.showItemInFolder(filePath)
+  return filePath
+})
+```
+
+<Tip>
+  Always validate URLs before passing them to `openExternal`. An attacker who can control the URL argument could use custom protocol handlers to execute arbitrary code.
+</Tip>
+
+## Process availability
+
+`shell` is available in the **main process** and in **non-sandboxed renderer processes**.

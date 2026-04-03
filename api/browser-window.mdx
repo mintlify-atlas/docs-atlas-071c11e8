@@ -1,0 +1,146 @@
+---
+title: BrowserWindow
+description: Create and control browser windows from the main process.
+---
+
+`BrowserWindow` lets you create native application windows that load web content. Each window runs in its own renderer process. You can control the window's size, frame, title bar, background color, parent/child relationships, and more.
+
+<Note>
+  `BrowserWindow` is only available in the **main process**. It cannot be used until the `ready` event of the `app` module fires.
+</Note>
+
+## Constructor
+
+### `new BrowserWindow([options])`
+
+<AccordionGroup>
+  <Accordion title="Common constructor options">
+    <ParamField path="width" type="number" default="800">
+      Window width in pixels.
+    </ParamField>
+    <ParamField path="height" type="number" default="600">
+      Window height in pixels.
+    </ParamField>
+    <ParamField path="show" type="boolean" default="true">
+      Whether to show the window on creation. Set to `false` to show it gracefully after `ready-to-show`.
+    </ParamField>
+    <ParamField path="backgroundColor" type="string">
+      Background color of the window before any content loads, e.g. `'#2e2c29'`.
+    </ParamField>
+    <ParamField path="parent" type="BrowserWindow">
+      Set a parent window to create a child window.
+    </ParamField>
+    <ParamField path="modal" type="boolean" default="false">
+      When `true` (and `parent` is set), the window is modal and blocks interaction with the parent.
+    </ParamField>
+    <ParamField path="webPreferences" type="object">
+      Settings for the web page: `nodeIntegration`, `contextIsolation`, `preload`, `sandbox`, etc.
+    </ParamField>
+  </Accordion>
+</AccordionGroup>
+
+## Key instance events
+
+### `ready-to-show`
+
+Emitted when the renderer has painted the page for the first time. Show the window here to avoid a visual flash.
+
+### `close`
+
+Emitted when the window is about to be closed. Call `event.preventDefault()` to cancel.
+
+### `closed`
+
+Emitted after the window has been closed. Remove all references to the window here.
+
+### `focus` / `blur`
+
+Emitted when the window gains or loses focus.
+
+### `unresponsive` / `responsive`
+
+Emitted when the web page freezes or recovers.
+
+## Key instance methods
+
+### `win.loadURL(url[, options])`
+
+<ParamField path="url" type="string" required>
+  The URL to load, e.g. `'https://example.com'` or `'file:///path/to/index.html'`.
+</ParamField>
+
+Returns `Promise<void>` — resolves when the page has finished loading.
+
+### `win.loadFile(filePath[, options])`
+
+<ParamField path="filePath" type="string" required>
+  Path to a local HTML file, relative to the app root.
+</ParamField>
+
+Loads a local file into the window. Equivalent to `loadURL(url.format({ protocol: 'file', pathname: filePath }))`.
+
+### `win.show()` / `win.hide()`
+
+Shows or hides the window without changing focus state.
+
+### `win.close()`
+
+Attempts to close the window. The `close` event fires and can be cancelled via `event.preventDefault()`.
+
+### `win.maximize()` / `win.minimize()` / `win.restore()`
+
+Maximize, minimize, or restore the window from a minimized state.
+
+### `win.setFullScreen(flag)`
+
+<ParamField path="flag" type="boolean" required>
+  `true` to enter full-screen mode, `false` to leave.
+</ParamField>
+
+### `win.setTitle(title)`
+
+<ParamField path="title" type="string" required>
+  The new window title.
+</ParamField>
+
+### `win.webContents`
+
+The `WebContents` instance belonging to this window. Use it to send IPC messages, execute JavaScript, and manage the page.
+
+## Example
+
+```javascript main.js
+const { app, BrowserWindow } = require('electron')
+
+function createWindow() {
+  const win = new BrowserWindow({
+    width: 1200,
+    height: 800,
+    show: false,
+    backgroundColor: '#1e1e1e',
+    webPreferences: {
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js'),
+    },
+  })
+
+  win.loadFile('index.html')
+
+  win.once('ready-to-show', () => {
+    win.show()
+  })
+}
+
+app.whenReady().then(createWindow)
+```
+
+<Tip>
+  Set `show: false` and show the window in `ready-to-show` to avoid a white flash while content loads.
+</Tip>
+
+## Related APIs
+
+- [app](/api/app) — application lifecycle
+- [ipcMain](/api/ipc-main) — receive messages from the renderer
+- [dialog](/api/dialog) — open native file/message dialogs
+- [session](/api/session) — manage the session for a window's web contents

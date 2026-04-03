@@ -1,24 +1,11 @@
 {
-  "$schema": "https://mintlify.com/docs.json",
-  "name": "Electron",
+  "projectType": "framework",
+  "projectName": "Electron",
+  "projectDescription": "A framework for building cross-platform desktop applications using JavaScript, HTML, and CSS by embedding Chromium and Node.js.",
   "theme": "palm",
-  "colors": {
-    "primary": "#9adcec",
-    "light": "#658c9c",
-    "dark": "#2d3545"
-  },
-  "favicon": "https://media.brand.dev/9ed47e50-5dd0-4568-9cc1-0976a9245fa7.jpg",
-  "navbar": {
-    "primary": {
-      "type": "github",
-      "href": "https://github.com/electron/electron"
-    }
-  },
-  "footer": {
-    "socials": {
-      "github": "https://github.com/electron/electron"
-    }
-  },
+  "primaryColor": "#9adcec",
+  "lightColor": "#658c9c",
+  "darkColor": "#2d3545",
   "navigation": {
     "tabs": [
       {
@@ -106,5 +93,37 @@
         ]
       }
     ]
-  }
+  },
+  "keyFeatures": [
+    "Cross-platform desktop apps (Windows, macOS, Linux) from a single JavaScript codebase",
+    "Embedded Chromium for rendering HTML/CSS/JS user interfaces",
+    "Full Node.js integration in the main process for filesystem, networking, and OS access",
+    "Inter-process communication (IPC) between main and renderer processes",
+    "Native OS integrations: menus, tray, notifications, dialogs, file system",
+    "Context isolation and sandbox for secure renderer processes",
+    "Auto-updater support for delivering app updates",
+    "Electron Forge for packaging, building, and distributing apps"
+  ],
+  "publicApiSurface": [
+    "app — Application lifecycle and events",
+    "BrowserWindow — Create and control browser windows",
+    "ipcMain / ipcRenderer — Inter-process communication",
+    "contextBridge — Securely expose APIs from preload scripts to renderer",
+    "session — Manage browser sessions, cookies, cache, and proxies",
+    "protocol — Register custom URI protocols",
+    "shell — Open files and URLs using native applications",
+    "dialog — Display native system dialogs",
+    "Menu / MenuItem — Create native application menus",
+    "Tray — Add system tray icons and menus",
+    "Notification — Display native desktop notifications",
+    "clipboard — Read/write to the system clipboard",
+    "nativeImage — Handle images in tray, dock, and application icons",
+    "screen — Retrieve screen size, display, and cursor info",
+    "webContents — Render and control web pages",
+    "UtilityProcess — Spawn child processes with Node.js environment",
+    "autoUpdater — Enable apps to automatically update themselves",
+    "crashReporter — Submit crash reports to remote servers",
+    "globalShortcut — Register global keyboard shortcuts",
+    "powerMonitor — Monitor power state changes"
+  ]
 }

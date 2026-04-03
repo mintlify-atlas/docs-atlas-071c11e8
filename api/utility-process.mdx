@@ -1,0 +1,153 @@
+---
+title: utilityProcess
+description: Spawn Node.js child processes from the main process using Chromium's Services API.
+---
+
+`utilityProcess` lets you fork child processes with Node.js and MessagePort integration. It is the Electron equivalent of Node's `child_process.fork`, backed by Chromium's Services API instead of libuv. Use it for tasks like running native add-ons, CPU-heavy workloads, or untrusted third-party code in isolation.
+
+<Note>
+  `utilityProcess` is only available in the **main process**. You can only call `utilityProcess.fork` after `app` emits `ready`.
+</Note>
+
+## Module method
+
+### `utilityProcess.fork(modulePath[, args][, options])`
+
+Spawns a new Node.js child process running `modulePath`. Returns a `UtilityProcess` instance.
+
+<ParamField path="modulePath" type="string" required>
+  Absolute path to the JavaScript entry-point script for the child process.
+</ParamField>
+<ParamField path="args" type="string[]">
+  Command-line arguments available in the child as `process.argv`.
+</ParamField>
+<ParamField path="options.env" type="object">
+  Environment variables for the child. Defaults to `process.env`.
+</ParamField>
+<ParamField path="options.cwd" type="string">
+  Working directory for the child process.
+</ParamField>
+<ParamField path="options.stdio" type="string | string[]">
+  Configure stdout/stderr: `'pipe'`, `'inherit'` (default), or `'ignore'`. Configuring stdin is not supported.
+</ParamField>
+<ParamField path="options.serviceName" type="string" default="Node Utility Process">
+  Name shown in `app.getAppMetrics()` and crash reports.
+</ParamField>
+<ParamField path="options.allowLoadingUnsignedLibraries" type="boolean" default="false">
+  macOS only. Launches via `Electron Helper (Plugin).app` to allow loading unsigned native libraries.
+</ParamField>
+<ParamField path="options.disclaim" type="boolean" default="false">
+  macOS only. Disclaims responsibility for TCC requests, treating the child as a separate entity.
+</ParamField>
+
+## Class: UtilityProcess
+
+### Instance events
+
+#### `spawn`
+
+Emitted once the child process has started successfully.
+
+#### `exit`
+
+Emitted when the child process terminates.
+
+<ParamField path="code" type="number" required>
+  The exit code from `waitpid` (POSIX) or `GetExitCodeProcess` (Windows).
+</ParamField>
+
+#### `message`
+
+Emitted when the child calls `process.parentPort.postMessage()`.
+
+<ParamField path="message" type="any" required>
+  The deserialized message sent from the child process.
+</ParamField>
+
+#### `error` _(Experimental)_
+
+Emitted when the child must terminate due to a non-recoverable V8 error. The `exit` event always follows.
+
+### Instance methods
+
+#### `child.postMessage(message[, transfer])`
+
+Sends a message to the child process. You can optionally transfer `MessagePortMain` ownership.
+
+<ParamField path="message" type="any" required>
+  A serializable value to send to the child.
+</ParamField>
+<ParamField path="transfer" type="MessagePortMain[]">
+  MessagePort instances to transfer (not copy) to the child.
+</ParamField>
+
+#### `child.kill()`
+
+Terminates the process. Returns `boolean` — `true` if the signal was delivered successfully.
+
+### Instance properties
+
+#### `child.pid`
+
+`Integer | undefined` — the OS process ID. `undefined` before the `spawn` event and after `exit`.
+
+#### `child.stdout`
+
+`NodeJS.ReadableStream | null` — readable stream for the child's stdout. Only set when `stdio` includes `'pipe'` for stdout.
+
+#### `child.stderr`
+
+`NodeJS.ReadableStream | null` — readable stream for the child's stderr. Only set when `stdio` includes `'pipe'` for stderr.
+
+## Example
+
+<CodeGroup>
+
+```javascript main.js
+const { app, utilityProcess, MessageChannelMain } = require('electron')
+const path = require('node:path')
+
+app.whenReady().then(() => {
+  const child = utilityProcess.fork(
+    path.join(__dirname, 'worker.js'),
+    [],
+    { stdio: 'pipe' }
+  )
+
+  child.stdout.on('data', (data) => {
+    console.log('[worker stdout]', data.toString())
+  })
+
+  child.on('spawn', () => {
+    child.postMessage({ type: 'start', payload: { task: 'encode' } })
+  })
+
+  child.on('message', (msg) => {
+    console.log('Result from worker:', msg)
+  })
+
+  child.on('exit', (code) => {
+    console.log('Worker exited with code', code)
+  })
+})
+```
+
+```javascript worker.js
+// Child process — has full Node.js access
+process.parentPort.on('message', (e) => {
+  const { type, payload } = e.data
+
+  if (type === 'start') {
+    // Do work...
+    const result = { status: 'done', task: payload.task }
+    process.parentPort.postMessage(result)
+  }
+})
+```
+
+</CodeGroup>
+
+## Related APIs
+
+- [app](/api/app) — `app.whenReady()` must resolve before calling `utilityProcess.fork`
+- [ipcMain](/api/ipc-main) — communicate with renderer processes from the main process

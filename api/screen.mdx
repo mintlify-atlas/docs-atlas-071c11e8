@@ -1,0 +1,154 @@
+---
+title: "screen"
+description: "Query display information including size, position, cursor location, and DPI scaling."
+---
+
+The `screen` module retrieves information about the connected displays — their bounds, work area, scale factor, rotation, and the current cursor position. It also emits events when displays are added, removed, or changed.
+
+`screen` is an [EventEmitter](https://nodejs.org/api/events.html#class-eventemitter) available only in the **main process**.
+
+<Warning>
+  You must wait for the `app` `ready` event before using `screen`. Calling any `screen` method before `app.whenReady()` resolves will throw.
+</Warning>
+
+<Note>
+  In a DevTools console, `window.screen` is a reserved DOM property. Use `require('electron').screen` or `require('electron/main').screen` instead.
+</Note>
+
+## Events
+
+### `display-added`
+
+Emitted when a new display is connected.
+
+| Argument | Type | Description |
+|---|---|---|
+| `event` | Event | — |
+| `newDisplay` | Display | The newly added display. |
+
+### `display-removed`
+
+Emitted when a display is disconnected.
+
+| Argument | Type | Description |
+|---|---|---|
+| `event` | Event | — |
+| `oldDisplay` | Display | The display that was removed. |
+
+### `display-metrics-changed`
+
+Emitted when properties of a display change (e.g., resolution, scale factor, or rotation).
+
+| Argument | Type | Description |
+|---|---|---|
+| `event` | Event | — |
+| `display` | Display | The affected display. |
+| `changedMetrics` | `string[]` | Which metrics changed: `'bounds'`, `'workArea'`, `'scaleFactor'`, `'rotation'`. |
+
+## Methods
+
+### `screen.getPrimaryDisplay()`
+
+Returns `Display` — the primary display.
+
+### `screen.getAllDisplays()`
+
+Returns `Display[]` — all currently connected displays.
+
+### `screen.getCursorScreenPoint()`
+
+Returns `Point` — the current absolute position of the mouse cursor in DIP coordinates.
+
+<Note>
+  Not supported on Wayland (Linux).
+</Note>
+
+### `screen.getDisplayNearestPoint(point)`
+
+Returns `Display` — the display closest to the given point.
+
+<ParamField path="point" type="Point" required>
+  `{ x, y }` position in DIP coordinates.
+</ParamField>
+
+### `screen.getDisplayMatching(rect)`
+
+Returns `Display` — the display that most closely intersects the given rectangle.
+
+<ParamField path="rect" type="Rectangle" required>
+  `{ x, y, width, height }` rectangle in DIP coordinates.
+</ParamField>
+
+## Example: window that fills the primary display
+
+```js title="main.js"
+const { app, BrowserWindow, screen } = require('electron/main')
+
+app.whenReady().then(() => {
+  const primaryDisplay = screen.getPrimaryDisplay()
+  const { width, height } = primaryDisplay.workAreaSize
+
+  const win = new BrowserWindow({ width, height })
+  win.loadFile('index.html')
+})
+```
+
+## Example: open on an external display
+
+```js title="main.js"
+const { app, BrowserWindow, screen } = require('electron/main')
+
+app.whenReady().then(() => {
+  const displays = screen.getAllDisplays()
+
+  // Find a display that isn't at the primary origin
+  const external = displays.find(
+    (d) => d.bounds.x !== 0 || d.bounds.y !== 0
+  )
+
+  const win = new BrowserWindow(
+    external
+      ? { x: external.bounds.x + 50, y: external.bounds.y + 50 }
+      : {}
+  )
+  win.loadFile('index.html')
+})
+```
+
+## Example: react to display changes
+
+```js title="main.js"
+const { app, screen } = require('electron/main')
+
+app.whenReady().then(() => {
+  screen.on('display-added', (_event, display) => {
+    console.log('Display connected:', display.id, display.bounds)
+  })
+
+  screen.on('display-removed', (_event, display) => {
+    console.log('Display disconnected:', display.id)
+  })
+
+  screen.on('display-metrics-changed', (_event, display, metrics) => {
+    console.log('Display changed:', display.id, 'metrics:', metrics)
+  })
+})
+```
+
+## The Display object
+
+Each `Display` returned by `screen` methods has these key properties:
+
+| Property | Type | Description |
+|---|---|---|
+| `id` | `number` | Unique display identifier. |
+| `bounds` | `Rectangle` | Full bounds of the display in DIP pixels. |
+| `workAreaSize` | `Size` | Available area excluding OS UI (taskbar, Dock). |
+| `workArea` | `Rectangle` | Position and size of the work area. |
+| `scaleFactor` | `number` | Device pixel ratio (e.g., `2` on Retina). |
+| `rotation` | `number` | Display rotation in degrees: `0`, `90`, `180`, or `270`. |
+| `internal` | `boolean` | `true` for built-in displays (e.g., laptop screens). |
+
+## Process availability
+
+`screen` is available in the **main process** only.

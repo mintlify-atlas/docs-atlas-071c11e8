@@ -1,0 +1,123 @@
+---
+title: "ipcRenderer"
+description: "Send messages from a renderer process to the main process and listen for replies."
+---
+
+The `ipcRenderer` module lets you communicate from a renderer process to the main process. Use it to send one-way notifications, invoke async handlers, and receive messages pushed from the main process.
+
+<Note>
+  `ipcRenderer` runs in the **renderer process** only. Because context isolation is enabled by default, you must call it from a preload script and expose a safe API to your renderer via [`contextBridge`](/api/context-bridge). See [Context Isolation](/concepts/context-isolation) and [IPC](/concepts/ipc) for background.
+</Note>
+
+<Warning>
+  Never expose the raw `ipcRenderer` object or the `event` argument to the renderer. Always wrap callbacks so only the data you intend to share crosses the context boundary.
+</Warning>
+
+## Listening for messages
+
+### `ipcRenderer.on(channel, listener)`
+
+Registers a persistent listener on `channel`. The listener is called each time a message arrives.
+
+<ParamField path="channel" type="string" required>
+  Arbitrary channel name. Must match the channel used by the sender.
+</ParamField>
+
+<ParamField path="listener" type="Function" required>
+  Called as `listener(event, ...args)` whenever a message is received on the channel.
+</ParamField>
+
+### `ipcRenderer.once(channel, listener)`
+
+Registers a one-time listener. The listener is removed after the first message is received.
+
+<ParamField path="channel" type="string" required>
+  Channel to listen on.
+</ParamField>
+
+<ParamField path="listener" type="Function" required>
+  Called once as `listener(event, ...args)`, then automatically removed.
+</ParamField>
+
+### `ipcRenderer.off(channel, listener)`
+
+Removes a specific listener from `channel`.
+
+### `ipcRenderer.removeAllListeners([channel])`
+
+Removes all listeners for `channel`. If `channel` is omitted, removes all listeners across all channels.
+
+## Sending messages
+
+### `ipcRenderer.send(channel, ...args)`
+
+Sends an asynchronous one-way message to the main process. The main process receives it with `ipcMain.on`.
+
+<ParamField path="channel" type="string" required>
+  Channel name.
+</ParamField>
+
+<ParamField path="...args" type="any[]">
+  Arguments serialized with the [Structured Clone Algorithm](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm). DOM objects, Electron objects, Functions, Promises, Symbols, WeakMaps, and WeakSets cannot be sent.
+</ParamField>
+
+### `ipcRenderer.invoke(channel, ...args)`
+
+Sends a message to the main process and returns a `Promise` that resolves with the value returned by `ipcMain.handle`. Prefer this over `send` whenever you need a response.
+
+**Returns** `Promise<any>`
+
+<ParamField path="channel" type="string" required>
+  Channel name. The main process must register a handler with `ipcMain.handle(channel, ...)`.
+</ParamField>
+
+<ParamField path="...args" type="any[]">
+  Arguments passed to the main process handler.
+</ParamField>
+
+## Example: request–response with invoke
+
+<CodeGroup>
+
+```js preload.js
+const { contextBridge, ipcRenderer } = require('electron')
+
+contextBridge.exposeInMainWorld('electronAPI', {
+  openFile: () => ipcRenderer.invoke('dialog:openFile'),
+  onFileOpened: (callback) =>
+    ipcRenderer.on('file-opened', (_event, path) => callback(path))
+})
+```
+
+```js main.js
+const { app, BrowserWindow, dialog, ipcMain } = require('electron')
+const path = require('node:path')
+
+app.whenReady().then(() => {
+  ipcMain.handle('dialog:openFile', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog({})
+    return canceled ? null : filePaths[0]
+  })
+
+  const win = new BrowserWindow({
+    webPreferences: { preload: path.join(__dirname, 'preload.js') }
+  })
+  win.loadFile('index.html')
+})
+```
+
+```js renderer.js
+const btn = document.getElementById('open-btn')
+const label = document.getElementById('file-path')
+
+btn.addEventListener('click', async () => {
+  const filePath = await window.electronAPI.openFile()
+  if (filePath) label.textContent = filePath
+})
+```
+
+</CodeGroup>
+
+## Process availability
+
+`ipcRenderer` is available only in the **renderer process**. Attempting to require it in the main process throws an error.

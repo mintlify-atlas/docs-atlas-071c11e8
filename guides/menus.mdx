@@ -1,0 +1,254 @@
+---
+title: "Menus"
+description: "Create application menus and context menus"
+---
+
+Electron's [`Menu`](/api/menu) class provides a standardized way to create cross-platform native menus. The same API handles application menus, context menus, tray menus, and (on macOS) dock menus.
+
+## Building a menu
+
+The recommended way to build a menu is `Menu.buildFromTemplate`, which accepts an array of `MenuItemConstructorOptions` objects and returns a `Menu` instance.
+
+```javascript title="main.js"
+const { Menu } = require('electron')
+
+const menu = Menu.buildFromTemplate([
+  {
+    label: 'File',
+    submenu: [
+      { role: 'quit' }
+    ]
+  },
+  {
+    label: 'Edit',
+    submenu: [
+      { role: 'undo' },
+      { role: 'redo' },
+      { type: 'separator' },
+      { role: 'cut' },
+      { role: 'copy' },
+      { role: 'paste' },
+      { role: 'selectAll' }
+    ]
+  },
+  {
+    label: 'View',
+    submenu: [
+      { role: 'reload' },
+      { role: 'forceReload' },
+      { role: 'toggleDevTools' },
+      { type: 'separator' },
+      { role: 'resetZoom' },
+      { role: 'zoomIn' },
+      { role: 'zoomOut' },
+      { type: 'separator' },
+      { role: 'togglefullscreen' }
+    ]
+  },
+  {
+    label: 'Window',
+    role: 'windowMenu'
+  }
+])
+
+Menu.setApplicationMenu(menu)
+```
+
+<Note>
+  If you do not call `Menu.setApplicationMenu`, Electron automatically creates a default menu containing standard items (File, Edit, View, Window, Help). Pass `null` to suppress this default entirely.
+</Note>
+
+## Setting the application menu
+
+Call `Menu.setApplicationMenu(menu)` in the main process, after the `app` `ready` event fires.
+
+```javascript title="main.js"
+const { app, Menu } = require('electron')
+
+app.whenReady().then(() => {
+  const menu = Menu.buildFromTemplate([ /* ... */ ])
+  Menu.setApplicationMenu(menu)
+})
+```
+
+On **macOS**, the application menu appears in the menu bar at the top of the screen. On **Windows** and **Linux**, it appears as a top menu bar attached to each window.
+
+## Menu item types
+
+Every `MenuItem` has a `type` that controls its appearance and behavior.
+
+| Type | Description |
+|------|-------------|
+| `normal` | Standard clickable item (default). |
+| `separator` | A horizontal dividing line. |
+| `checkbox` | Toggles a `checked` state on click. |
+| `radio` | Like `checkbox`, but turns off adjacent radio items when checked. |
+| `submenu` | Assigned automatically when a `submenu` property is present. |
+
+```javascript title="main.js"
+const menu = Menu.buildFromTemplate([
+  {
+    label: 'Options',
+    submenu: [
+      { label: 'Option A', type: 'checkbox', checked: true },
+      { label: 'Option B', type: 'checkbox', checked: false },
+      { type: 'separator' },
+      { label: 'Mode 1', type: 'radio', checked: true },
+      { label: 'Mode 2', type: 'radio', checked: false }
+    ]
+  }
+])
+```
+
+## Menu roles
+
+Roles assign standard OS behavior to a menu item without requiring a custom `click` handler. Electron uses the platform's native implementation, which is more reliable than reimplementing the behavior yourself.
+
+```javascript title="main.js"
+// Good: uses the platform-native undo behavior
+{ role: 'undo' }
+
+// Unnecessary: the role already provides the label and behavior
+{ role: 'undo', label: 'Undo', click: () => { /* ... */ } }
+```
+
+### Common roles
+
+| Category | Roles |
+|----------|-------|
+| Edit | `undo`, `redo`, `cut`, `copy`, `paste`, `selectAll`, `delete`, `pasteAndMatchStyle` |
+| View | `reload`, `forceReload`, `toggleDevTools`, `resetZoom`, `zoomIn`, `zoomOut`, `togglefullscreen` |
+| Window | `minimize`, `close`, `quit`, `about`, `zoom` |
+| Default submenus | `fileMenu`, `editMenu`, `viewMenu`, `windowMenu` |
+
+<Note>
+  Role strings are case-insensitive. `toggleDevTools`, `toggledevtools`, and `TOGGLEDEVTOOLS` are all equivalent.
+</Note>
+
+On macOS, additional roles are available for app management (`hide`, `hideOthers`, `unhide`, `front`), native tabs (`toggleTabBar`, `mergeAllWindows`), and the default app menu (`appMenu`, `services`, `window`, `help`).
+
+## Accelerators
+
+Attach a keyboard shortcut to any menu item using the `accelerator` property.
+
+```javascript title="main.js"
+{
+  label: 'Save',
+  accelerator: 'CmdOrCtrl+S',
+  click: () => { /* save logic */ }
+}
+```
+
+See the [Keyboard Shortcuts](/guides/keyboard-shortcuts) guide for a full reference on accelerator strings.
+
+## Creating a context menu
+
+Context menus are displayed by calling `menu.popup()` in response to a user right-click. The typical pattern is to listen for the `context-menu` event on `webContents` and then build and show a menu.
+
+<Steps>
+  <Step title="Listen for the context-menu event in the main process">
+    Subscribe to the `context-menu` event on the window's `webContents`. This event fires whenever the user right-clicks inside the renderer.
+
+    ```javascript title="main.js"
+    const { BrowserWindow } = require('electron')
+
+    const win = new BrowserWindow({ /* ... */ })
+
+    win.webContents.on('context-menu', (event, params) => {
+      // params contains information about where the user right-clicked
+    })
+    ```
+  </Step>
+  <Step title="Build the context menu template">
+    Create a `Menu` from a template. You can use `params` to conditionally include items based on context (e.g., only show "Copy" when text is selected).
+
+    ```javascript title="main.js"
+    const { Menu } = require('electron')
+
+    win.webContents.on('context-menu', (event, params) => {
+      const template = [
+        {
+          label: 'Cut',
+          role: 'cut',
+          enabled: params.editFlags.canCut
+        },
+        {
+          label: 'Copy',
+          role: 'copy',
+          enabled: params.editFlags.canCopy
+        },
+        {
+          label: 'Paste',
+          role: 'paste',
+          enabled: params.editFlags.canPaste
+        }
+      ]
+
+      const contextMenu = Menu.buildFromTemplate(template)
+    })
+    ```
+  </Step>
+  <Step title="Show the menu with popup()">
+    Call `contextMenu.popup()` to display it at the cursor position. Pass the `window` option to associate it with the correct window.
+
+    ```javascript title="main.js"
+    contextMenu.popup({ window: win })
+    ```
+  </Step>
+</Steps>
+
+### Full context menu example
+
+```javascript title="main.js"
+const { app, BrowserWindow, Menu } = require('electron')
+
+app.whenReady().then(() => {
+  const win = new BrowserWindow({ width: 800, height: 600 })
+  win.loadFile('index.html')
+
+  win.webContents.on('context-menu', (event, params) => {
+    const menu = Menu.buildFromTemplate([
+      {
+        label: 'Cut',
+        role: 'cut',
+        enabled: params.editFlags.canCut
+      },
+      {
+        label: 'Copy',
+        role: 'copy',
+        enabled: params.editFlags.canCopy
+      },
+      {
+        label: 'Paste',
+        role: 'paste',
+        enabled: params.editFlags.canPaste
+      },
+      { type: 'separator' },
+      {
+        label: 'Inspect Element',
+        click: () => win.webContents.inspectElement(params.x, params.y)
+      }
+    ])
+
+    menu.popup({ window: win })
+  })
+})
+```
+
+## Advanced: item positioning
+
+When building a menu with `Menu.buildFromTemplate`, you can control ordering with the `id`, `before`, `after`, `beforeGroupContaining`, and `afterGroupContaining` properties.
+
+```javascript title="main.js"
+Menu.buildFromTemplate([
+  { id: 'save', label: 'Save' },
+  { id: 'saveAs', label: 'Save As', after: ['save'] },
+  { type: 'separator' },
+  { id: 'open', label: 'Open', beforeGroupContaining: ['save'] }
+])
+```
+
+## Further reading
+
+- [`Menu` API reference](/api/menu)
+- [Keyboard shortcuts](/guides/keyboard-shortcuts)

@@ -1,0 +1,137 @@
+---
+title: dialog
+description: Show native system dialogs for opening and saving files, and displaying alerts.
+---
+
+The `dialog` module gives you access to native OS dialogs for file selection, save paths, and message boxes. All methods come in both synchronous and asynchronous (`Promise`-based) variants.
+
+<Note>
+  `dialog` is only available in the **main process**.
+</Note>
+
+## Methods
+
+### `dialog.showOpenDialog([window,] options)`
+
+Shows a native file-open dialog. Returns `Promise<{ canceled, filePaths, bookmarks? }>`.
+
+<ParamField path="window" type="BaseWindow">
+  Parent window. When provided the dialog is modal.
+</ParamField>
+<ParamField path="options.title" type="string">
+  Dialog title (not shown on all platforms).
+</ParamField>
+<ParamField path="options.defaultPath" type="string">
+  Absolute path or filename to pre-populate.
+</ParamField>
+<ParamField path="options.filters" type="FileFilter[]">
+  Array of `{ name, extensions }` objects restricting visible file types.
+</ParamField>
+<ParamField path="options.properties" type="string[]">
+  Feature flags: `'openFile'`, `'openDirectory'`, `'multiSelections'`, `'createDirectory'` (macOS), `'promptToCreate'` (Windows).
+</ParamField>
+<ParamField path="options.buttonLabel" type="string">
+  Custom label for the confirmation button.
+</ParamField>
+
+<ResponseField name="canceled" type="boolean" required>
+  `true` if the user dismissed the dialog without selecting a file.
+</ResponseField>
+<ResponseField name="filePaths" type="string[]" required>
+  Selected file paths. Empty array if canceled.
+</ResponseField>
+
+### `dialog.showOpenDialogSync([window,] options)`
+
+Synchronous version. Returns `string[] | undefined` (undefined if canceled).
+
+<Warning>
+  The synchronous variant blocks the main process event loop. Prefer the async version in most cases.
+</Warning>
+
+### `dialog.showSaveDialog([window,] options)`
+
+Shows a native file-save dialog. Returns `Promise<{ canceled, filePath, bookmark? }>`.
+
+<ParamField path="window" type="BaseWindow">
+  Parent window. When provided the dialog is modal.
+</ParamField>
+<ParamField path="options.title" type="string">
+  Dialog title.
+</ParamField>
+<ParamField path="options.defaultPath" type="string">
+  Initial directory path or filename suggestion.
+</ParamField>
+<ParamField path="options.filters" type="FileFilter[]">
+  File type filters shown in the dialog.
+</ParamField>
+
+<ResponseField name="canceled" type="boolean" required>
+  `true` if the user dismissed the dialog.
+</ResponseField>
+<ResponseField name="filePath" type="string" required>
+  The path chosen by the user. Empty string if canceled.
+</ResponseField>
+
+### `dialog.showMessageBox([window,] options)`
+
+Shows a native message box (alert, confirm, error). Returns `Promise<{ response, checkboxChecked }>`.
+
+<ParamField path="options.message" type="string" required>
+  The main message text displayed in the box.
+</ParamField>
+<ParamField path="options.type" type="string">
+  Icon style: `'none'`, `'info'`, `'error'`, `'question'`, or `'warning'`.
+</ParamField>
+<ParamField path="options.buttons" type="string[]">
+  Button labels. Defaults to `['OK']`.
+</ParamField>
+<ParamField path="options.title" type="string">
+  Window title (not shown on macOS).
+</ParamField>
+<ParamField path="options.detail" type="string">
+  Extra detail text shown below `message`.
+</ParamField>
+<ParamField path="options.cancelId" type="Integer">
+  Index of the button to use when the dialog is dismissed with Escape.
+</ParamField>
+
+<ResponseField name="response" type="Integer" required>
+  Zero-based index of the button the user clicked.
+</ResponseField>
+
+## Example
+
+```javascript main.js
+const { dialog, app, BrowserWindow } = require('electron')
+
+async function openFiles(win) {
+  const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+    title: 'Open project',
+    properties: ['openFile', 'multiSelections'],
+    filters: [
+      { name: 'JavaScript', extensions: ['js', 'ts', 'mjs'] },
+      { name: 'All Files', extensions: ['*'] },
+    ],
+  })
+
+  if (!canceled) {
+    console.log('Selected:', filePaths)
+  }
+}
+
+async function confirmClose(win) {
+  const { response } = await dialog.showMessageBox(win, {
+    type: 'question',
+    buttons: ['Save', 'Discard', 'Cancel'],
+    message: 'Do you want to save changes?',
+    cancelId: 2,
+  })
+  return response // 0 = Save, 1 = Discard, 2 = Cancel
+}
+```
+
+## Related APIs
+
+- [BrowserWindow](/api/browser-window) — parent window for modal dialogs
+- [app](/api/app) — application lifecycle

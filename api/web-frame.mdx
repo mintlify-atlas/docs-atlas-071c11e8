@@ -1,0 +1,133 @@
+---
+title: "webFrame"
+description: "Customize the rendering of the current web page, including zoom, spell check, and resource loading."
+---
+
+The `webFrame` module lets you control how the current frame is rendered. You can adjust the zoom level, enable custom spell checking, and insert CSS or JavaScript into the page.
+
+`webFrame` is an instance of the `WebFrame` class representing the current frame. Sub-frames can be accessed through properties such as `webFrame.firstChild`.
+
+<Note>
+  `webFrame` runs in the **renderer process** only. When context isolation is enabled, call it from a preload script and expose what you need via [`contextBridge`](/api/context-bridge).
+</Note>
+
+## Zoom
+
+### `webFrame.setZoomFactor(factor)`
+
+Sets the zoom factor. A factor of `1.0` is 100%, `2.0` is 200%, and so on.
+
+<ParamField path="factor" type="number" required>
+  Zoom factor. Must be greater than `0.0`.
+</ParamField>
+
+### `webFrame.getZoomFactor()`
+
+Returns `number` — the current zoom factor.
+
+### `webFrame.setZoomLevel(level)`
+
+Sets the zoom level. Level `0` is the original size; each increment zooms 20% larger or smaller, capped at 300% and 50%.
+
+<ParamField path="level" type="number" required>
+  Zoom level. `0` restores the original size.
+</ParamField>
+
+<Note>
+  Chromium applies zoom at the origin level, not per-window. If you want different zoom levels per window, use distinct origins (different hostnames or ports).
+</Note>
+
+### `webFrame.getZoomLevel()`
+
+Returns `number` — the current zoom level.
+
+### `webFrame.setVisualZoomLevelLimits(minimumLevel, maximumLevel)`
+
+Sets the minimum and maximum levels for pinch-to-zoom.
+
+<ParamField path="minimumLevel" type="number" required>
+  Minimum pinch-to-zoom level.
+</ParamField>
+
+<ParamField path="maximumLevel" type="number" required>
+  Maximum pinch-to-zoom level.
+</ParamField>
+
+<Note>
+  Pinch-to-zoom (visual zoom) is disabled by default in Electron. Call `webFrame.setVisualZoomLevelLimits(1, 3)` to enable it.
+</Note>
+
+## Spell checking
+
+### `webFrame.setSpellCheckProvider(language, provider)`
+
+Replaces the built-in spell checker with a custom provider. You must disable the built-in spell checker when creating the `BrowserWindow`.
+
+<ParamField path="language" type="string" required>
+  BCP 47 language tag, e.g. `'en-US'`.
+</ParamField>
+
+<ParamField path="provider" type="Object" required>
+  Object with a `spellCheck(words, callback)` method. Call `callback` with an array of misspelled words once checking is complete.
+</ParamField>
+
+## Injecting content
+
+### `webFrame.insertText(text)`
+
+Inserts `text` at the current focused element.
+
+<ParamField path="text" type="string" required>
+  Text to insert.
+</ParamField>
+
+### `webFrame.insertCSS(css)`
+
+Injects CSS into the current page. Returns a `string` key you can pass to `removeInsertedCSS` to undo the injection.
+
+<ParamField path="css" type="string" required>
+  CSS string to inject.
+</ParamField>
+
+### `webFrame.removeInsertedCSS(key)`
+
+Removes CSS previously injected with `insertCSS`.
+
+<ParamField path="key" type="string" required>
+  Key returned by `insertCSS`.
+</ParamField>
+
+## Example
+
+```js title="preload.js"
+const { contextBridge, webFrame } = require('electron')
+
+// Zoom controls exposed to the renderer
+contextBridge.exposeInMainWorld('display', {
+  zoomIn: () => webFrame.setZoomLevel(webFrame.getZoomLevel() + 1),
+  zoomOut: () => webFrame.setZoomLevel(webFrame.getZoomLevel() - 1),
+  resetZoom: () => webFrame.setZoomLevel(0),
+  getZoom: () => webFrame.getZoomFactor()
+})
+
+// Enable pinch-to-zoom
+webFrame.setVisualZoomLevelLimits(1, 3)
+```
+
+```js title="renderer.js"
+document.getElementById('zoom-in').addEventListener('click', () => {
+  window.display.zoomIn()
+})
+
+document.getElementById('zoom-out').addEventListener('click', () => {
+  window.display.zoomOut()
+})
+
+document.getElementById('reset').addEventListener('click', () => {
+  window.display.resetZoom()
+})
+```
+
+## Process availability
+
+`webFrame` is available only in the **renderer process**.

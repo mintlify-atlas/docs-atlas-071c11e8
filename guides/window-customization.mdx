@@ -1,0 +1,290 @@
+---
+title: "Window Customization"
+description: "Customize window appearance, chrome, and behavior"
+---
+
+The [`BrowserWindow`](/api/browser-window) module is the foundation of your Electron application. It exposes many APIs that let you customize the look and behavior of your app's windows across macOS, Windows, and Linux.
+
+## Window sizing constraints
+
+You can control the minimum and maximum dimensions of a window using the `minWidth`, `minHeight`, `maxWidth`, and `maxHeight` constructor options.
+
+```javascript title="main.js"
+const { BrowserWindow } = require('electron')
+
+const win = new BrowserWindow({
+  width: 800,
+  height: 600,
+  minWidth: 400,
+  minHeight: 300,
+  maxWidth: 1600,
+  maxHeight: 1200
+})
+```
+
+You can also update size constraints at runtime using instance methods:
+
+```javascript title="main.js"
+win.setMinimumSize(400, 300)
+win.setMaximumSize(1600, 1200)
+```
+
+## Frameless windows
+
+A frameless window removes all chrome applied by the OS, including window controls such as the title bar and borders. To create a frameless window, set `frame` to `false` in the `BrowserWindow` constructor.
+
+```javascript title="main.js"
+const { BrowserWindow } = require('electron')
+
+const win = new BrowserWindow({ frame: false })
+```
+
+<Note>
+  On Wayland (Linux), frameless windows still have GTK drop shadows and extended resize boundaries by default. Set `hasShadow: false` to create a fully decoration-free window.
+</Note>
+
+## Transparent windows
+
+To create a fully transparent window, set `transparent` to `true` in the constructor.
+
+```javascript title="main.js"
+const { BrowserWindow } = require('electron')
+
+const win = new BrowserWindow({ transparent: true, frame: false })
+```
+
+You can combine transparency with CSS to create custom window shapes:
+
+```css title="styles.css"
+body {
+  background: transparent;
+  border-radius: 12px;
+  overflow: hidden;
+}
+```
+
+### Limitations
+
+<Warning>
+  Transparent windows have several platform restrictions you should be aware of before using them in production.
+</Warning>
+
+- You cannot click through the transparent area.
+- Transparent windows are not resizable on some platforms. Setting `resizable: true` may cause them to stop working.
+- The CSS `blur()` filter only applies to the window's web contents — it does not blur content from other applications beneath the window.
+- The window will not appear transparent when DevTools is open.
+- On **Windows**: transparent windows cannot be maximized via the system menu or by double-clicking the title bar.
+- On **macOS**: the native window drop shadow is not shown on transparent windows.
+
+## Custom title bars
+
+Application windows have a default title bar applied by the OS chrome. Many applications remove it to create a more custom look.
+
+### Hiding the title bar
+
+Set `titleBarStyle` to `'hidden'` to hide the title bar while keeping the window functional.
+
+```javascript title="main.js"
+const { BrowserWindow } = require('electron')
+
+const win = new BrowserWindow({ titleBarStyle: 'hidden' })
+```
+
+<Tabs>
+  <Tab title="macOS">
+    On macOS, setting `titleBarStyle: 'hidden'` removes the title bar but keeps the traffic light controls (close, minimize, zoom) in the upper-left corner.
+
+    ```javascript title="main.js"
+    const { BrowserWindow } = require('electron')
+
+    // Traffic lights remain visible in the top-left corner
+    const win = new BrowserWindow({ titleBarStyle: 'hidden' })
+    ```
+  </Tab>
+  <Tab title="Windows / Linux">
+    On Windows and Linux, you must explicitly re-add window controls by setting `titleBarOverlay`. The simplest approach is to pass `true`:
+
+    ```javascript title="main.js"
+    const { BrowserWindow } = require('electron')
+
+    const win = new BrowserWindow({
+      titleBarStyle: 'hidden',
+      titleBarOverlay: true
+    })
+    ```
+
+    You can also customize the height, background color, and symbol color of the overlay:
+
+    ```javascript title="main.js"
+    const { BrowserWindow } = require('electron')
+
+    const win = new BrowserWindow({
+      titleBarStyle: 'hidden',
+      titleBarOverlay: {
+        color: '#2f3241',
+        symbolColor: '#74b1be',
+        height: 60
+      }
+    })
+    ```
+  </Tab>
+</Tabs>
+
+### Custom draggable regions
+
+When you remove the default title bar, your app needs to define which areas can be used to drag the window. Use the `-webkit-app-region` CSS property (also available as `app-region`) to mark a region as draggable.
+
+```css title="styles.css"
+.titlebar {
+  -webkit-app-region: drag;
+  user-select: none; /* prevent accidental text selection while dragging */
+}
+
+button {
+  -webkit-app-region: no-drag; /* buttons inside draggable regions must opt out */
+}
+```
+
+To make the entire window draggable:
+
+```css title="styles.css"
+body {
+  -webkit-app-region: drag;
+}
+
+button {
+  -webkit-app-region: no-drag;
+}
+```
+
+<Warning>
+  Draggable areas ignore all pointer events. Any interactive element (buttons, inputs, links) that overlaps a draggable region will not receive mouse events unless you explicitly mark it with `-webkit-app-region: no-drag`.
+</Warning>
+
+<Tip>
+  Avoid placing custom context menus on draggable areas. On some platforms, right-clicking a draggable region opens the system window menu instead.
+</Tip>
+
+## Traffic light customization (macOS)
+
+On macOS, you have additional control over the traffic light (close/minimize/zoom) buttons.
+
+### Hidden-until-hover style
+
+Use `titleBarStyle: 'customButtonsOnHover'` to hide the traffic lights until the user hovers over them.
+
+```javascript title="main.js"
+const { BrowserWindow } = require('electron')
+
+const win = new BrowserWindow({ titleBarStyle: 'customButtonsOnHover' })
+```
+
+### Custom traffic light position
+
+Use `titleBarStyle: 'hiddenInset'` to shift the traffic lights inward by a fixed amount, or pass `trafficLightPosition` for precise control.
+
+```javascript title="main.js"
+const { BrowserWindow } = require('electron')
+
+const win = new BrowserWindow({
+  titleBarStyle: 'hidden',
+  trafficLightPosition: { x: 10, y: 10 }
+})
+```
+
+### Show and hide programmatically
+
+```javascript title="main.js"
+const { BrowserWindow } = require('electron')
+
+const win = new BrowserWindow({ titleBarStyle: 'hidden' })
+
+// Hide the traffic lights
+win.setWindowButtonVisibility(false)
+
+// Show them again
+win.setWindowButtonVisibility(true)
+```
+
+## Click-through windows
+
+To create a window that ignores all mouse events, use `win.setIgnoreMouseEvents(true)`.
+
+```javascript title="main.js"
+const { BrowserWindow } = require('electron')
+
+const win = new BrowserWindow()
+win.setIgnoreMouseEvents(true)
+```
+
+<Tabs>
+  <Tab title="macOS / Windows">
+    On macOS and Windows, you can forward mouse move events to the page even while ignoring clicks. This lets elements like `mouseleave` still fire, enabling hover-based transitions in and out of click-through mode.
+
+    ```javascript title="main.js"
+    const { BrowserWindow, ipcMain } = require('electron')
+    const path = require('node:path')
+
+    const win = new BrowserWindow({
+      webPreferences: {
+        preload: path.join(__dirname, 'preload.js')
+      }
+    })
+
+    ipcMain.on('set-ignore-mouse-events', (event, ignore, options) => {
+      const win = BrowserWindow.fromWebContents(event.sender)
+      win.setIgnoreMouseEvents(ignore, options)
+    })
+    ```
+
+    ```javascript title="preload.js"
+    const { ipcRenderer } = require('electron')
+
+    window.addEventListener('DOMContentLoaded', () => {
+      const el = document.getElementById('clickThroughElement')
+      el.addEventListener('mouseenter', () => {
+        ipcRenderer.send('set-ignore-mouse-events', true, { forward: true })
+      })
+      el.addEventListener('mouseleave', () => {
+        ipcRenderer.send('set-ignore-mouse-events', false)
+      })
+    })
+    ```
+  </Tab>
+  <Tab title="Linux">
+    On Linux, the `forward` option is not available. The window will ignore all mouse events globally when `setIgnoreMouseEvents(true)` is called.
+  </Tab>
+</Tabs>
+
+## Background color
+
+Set a `backgroundColor` to control the color shown before the page loads. This reduces visual flash on startup and helps the window feel native.
+
+```javascript title="main.js"
+const { BrowserWindow } = require('electron')
+
+const win = new BrowserWindow({ backgroundColor: '#1e1e2e' })
+win.loadURL('https://example.com')
+```
+
+Valid color formats include hex (`#ff00a3`), RGB (`rgb(255, 145, 145)`), HSL (`hsl(230, 100%, 50%)`), and named colors (`blueviolet`).
+
+## Showing the window gracefully
+
+To avoid showing a blank or half-loaded window on startup, wait for the `ready-to-show` event before calling `win.show()`.
+
+```javascript title="main.js"
+const { BrowserWindow } = require('electron')
+
+const win = new BrowserWindow({ show: false })
+win.once('ready-to-show', () => {
+  win.show()
+})
+win.loadFile('index.html')
+```
+
+## Further reading
+
+- [`BrowserWindow` API reference](/api/browser-window)
+- [Keyboard shortcuts](/guides/keyboard-shortcuts)
+- [Menus](/guides/menus)

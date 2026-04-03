@@ -1,80 +1,224 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: "Quick start"
+description: "Build your first Electron app"
 ---
 
-## Get started in three steps
+This guide walks you through building a minimal Electron app from scratch. By the end you will have a working desktop window running local HTML, plus a preload script that safely bridges the main and renderer processes.
 
-Get your documentation site running locally and make your first customization.
+<Tip>
+  [Electron Fiddle](https://www.electronjs.org/fiddle) is a sandbox app maintained by the Electron team. You can use it to experiment with any of the code examples in these docs without setting up a project.
+</Tip>
 
-### Step 1: Set up your local environment
+## Prerequisites
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+Before you start, make sure you have [Node.js](https://nodejs.org/en/download/) installed. Run the following to confirm:
 
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+```bash
+node -v
+npm -v
+```
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+  Electron bundles its own Node.js runtime. The version you install locally is only used during development — your end users do not need Node.js installed to run your app.
 </Note>
+
+## Build your first app
+
+<Steps>
+  <Step title="Initialize your project">
+    Create a new directory for your app and initialize an npm package:
+
+    ```bash
+    mkdir my-electron-app && cd my-electron-app
+    npm init
+    ```
+
+    When prompted, set the **entry point** to `main.js`. The `author`, `license`, and `description` fields can be anything you like, but they are required later when packaging.
+
+    <Warning>
+      If you are on Windows, do not use Windows Subsystem for Linux (WSL) when following this guide — you will run into issues launching the app.
+    </Warning>
+  </Step>
+
+  <Step title="Install Electron">
+    Add Electron as a development dependency:
+
+    ```bash
+    npm install electron --save-dev
+    ```
+
+    Electron is a dev dependency because the packaging step bundles the binary into your distributable. You do not need it listed as a production dependency.
+
+    After installation your `package.json` should look similar to this:
+
+    ```json package.json
+    {
+      "name": "my-electron-app",
+      "version": "1.0.0",
+      "description": "Hello World!",
+      "main": "main.js",
+      "scripts": {
+        "start": "electron .",
+        "test": "echo \"Error: no test specified\" && exit 1"
+      },
+      "author": "Jane Doe",
+      "license": "MIT",
+      "devDependencies": {
+        "electron": "23.1.3"
+      }
+    }
+    ```
+
+    <Tip>
+      If the install fails due to network issues, see the [Installation](/installation) guide for mirror and proxy options.
+    </Tip>
+  </Step>
+
+  <Step title="Create the main process file">
+    The `main` field in `package.json` points to your **main process** entry point. Create `main.js` in your project root:
+
+    ```javascript main.js
+    const { app, BrowserWindow } = require('electron')
+    const path = require('node:path')
+
+    const createWindow = () => {
+      const win = new BrowserWindow({
+        width: 800,
+        height: 600,
+        webPreferences: {
+          preload: path.join(__dirname, 'preload.js')
+        }
+      })
+
+      win.loadFile('index.html')
+    }
+
+    app.whenReady().then(() => {
+      createWindow()
+
+      app.on('activate', () => {
+        // On macOS, re-create a window when the dock icon is clicked and no windows are open.
+        if (BrowserWindow.getAllWindows().length === 0) createWindow()
+      })
+    })
+
+    // Quit on Windows and Linux when all windows are closed.
+    app.on('window-all-closed', () => {
+      if (process.platform !== 'darwin') app.quit()
+    })
+    ```
+
+    The `app` module controls your application's event lifecycle. `BrowserWindow` creates and manages windows. You must wait for `app.whenReady()` before creating any windows.
+  </Step>
+
+  <Step title="Create the HTML page">
+    Each window displays a web page. Create `index.html` in the project root:
+
+    ```html index.html
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="UTF-8" />
+        <meta
+          http-equiv="Content-Security-Policy"
+          content="default-src 'self'; script-src 'self'"
+        />
+        <meta
+          http-equiv="X-Content-Security-Policy"
+          content="default-src 'self'; script-src 'self'"
+        />
+        <title>Hello from Electron renderer!</title>
+      </head>
+      <body>
+        <h1>Hello from Electron renderer!</h1>
+        <p id="info"></p>
+        <script src="./renderer.js"></script>
+      </body>
+    </html>
+    ```
+  </Step>
+
+  <Step title="Add a preload script">
+    A preload script runs before your page loads and can safely expose selected Node.js or Electron APIs to the renderer using `contextBridge`. Create `preload.js`:
+
+    ```javascript preload.js
+    const { contextBridge } = require('electron')
+
+    contextBridge.exposeInMainWorld('versions', {
+      node: () => process.versions.node,
+      chrome: () => process.versions.chrome,
+      electron: () => process.versions.electron
+    })
+    ```
+
+    This exposes a `versions` object on `window` in the renderer without giving the page direct access to Node.js.
+
+    <Note>
+      From Electron 20 onwards, preload scripts are sandboxed by default. They have access to a limited set of Node.js APIs (`events`, `timers`, `url`) and Electron renderer modules, but not the full Node.js runtime.
+    </Note>
+  </Step>
+
+  <Step title="Add a renderer script">
+    Create `renderer.js` to use the `versions` data exposed by the preload:
+
+    ```javascript renderer.js
+    const info = document.getElementById('info')
+    info.innerText =
+      `This app is using Chrome (v${versions.chrome()}), ` +
+      `Node.js (v${versions.node()}), ` +
+      `and Electron (v${versions.electron()})`
+    ```
+  </Step>
+
+  <Step title="Run the app">
+    Add the `start` script to `package.json` if it is not there already:
+
+    ```json package.json
+    {
+      "scripts": {
+        "start": "electron ."
+      }
+    }
+    ```
+
+    Then launch your app:
+
+    ```bash
+    npm start
+    ```
+
+    A desktop window should open displaying your HTML page and the version information from your preload script.
+  </Step>
+</Steps>
+
+## Your project structure
+
+After completing the steps above, your project should look like this:
+
+```
+my-electron-app/
+├── node_modules/
+├── index.html
+├── main.js
+├── package.json
+├── package-lock.json
+├── preload.js
+└── renderer.js
+```
+
+## What's next?
+
+<CardGroup cols={2}>
+  <Card title="Process model" icon="diagram-project" href="/concepts/process-model">
+    Learn how the main and renderer processes communicate.
+  </Card>
+  <Card title="Inter-process communication" icon="arrows-left-right" href="/concepts/ipc">
+    Send messages between processes using ipcMain and ipcRenderer.
+  </Card>
+  <Card title="Distribution" icon="box-open" href="/distribution/overview">
+    Package your app for Windows, macOS, and Linux with Electron Forge.
+  </Card>
+  <Card title="Installation" icon="download" href="/installation">
+    Advanced install options: mirrors, proxies, and native modules.
+  </Card>
+</CardGroup>

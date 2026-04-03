@@ -1,0 +1,135 @@
+---
+title: "Context Isolation"
+description: "Securely expose APIs between preload scripts and renderer"
+---
+
+Context isolation ensures that your preload scripts and Electron's internal logic run in a separate JavaScript context from the web content you load in a [`webContents`](/api/browser-window). This prevents web content from accidentally — or maliciously — accessing the Node.js APIs and powerful internals your preload script has access to.
+
+Context isolation has been **enabled by default since Electron 12** and is a recommended security setting for all applications.
+
+## How it works
+
+When context isolation is enabled, your preload script and the renderer's web content each have their own `window` object. Setting a property in your preload script does not make it visible in the renderer's context:
+
+```js title="preload.js"
+window.hello = 'wave'
+```
+
+```js title="renderer.js"
+console.log(window.hello)
+// => undefined
+```
+
+This separation is intentional. It means a compromised or malicious page cannot reach into the preload script's context to access Node.js APIs or sensitive Electron internals.
+
+## Exposing APIs safely with contextBridge
+
+To share functionality from a preload script with the renderer, use the [`contextBridge`](/api/context-bridge) module. It provides a safe, controlled channel for exposing specific APIs across the isolation boundary.
+
+### The wrong way
+
+Before context isolation existed (or when it's disabled), you could attach properties directly to `window`:
+
+```js title="preload.js"
+// contextIsolation: false — do not do this
+window.myAPI = {
+  doAThing: () => {}
+}
+```
+
+```js title="renderer.js"
+window.myAPI.doAThing()
+```
+
+This works, but it exposes your entire preload context to the renderer with no filtering or sandboxing.
+
+### The right way
+
+With context isolation enabled, use `contextBridge.exposeInMainWorld`:
+
+```js title="preload.js"
+const { contextBridge } = require('electron')
+
+contextBridge.exposeInMainWorld('myAPI', {
+  doAThing: () => {}
+})
+```
+
+```js title="renderer.js"
+window.myAPI.doAThing()
+```
+
+The API is accessible at the same `window.myAPI` path, but the renderer cannot reach past the exposed interface to access anything in the preload script's context.
+
+## Security considerations
+
+Enabling context isolation and using `contextBridge` is not sufficient on its own — **what you expose matters**. Wrapping a raw IPC method is just as dangerous as disabling isolation entirely:
+
+```js title="preload.js"
+// Bad — exposes the entire IPC system without filtering
+contextBridge.exposeInMainWorld('myAPI', {
+  send: ipcRenderer.send
+})
+```
+
+Any web content could call `window.myAPI.send('any-channel', anyData)` and trigger arbitrary IPC messages. Instead, expose one method per use case with the channel name baked in:
+
+```js title="preload.js"
+// Good — the renderer can only trigger this specific action
+contextBridge.exposeInMainWorld('myAPI', {
+  loadPreferences: () => ipcRenderer.invoke('load-prefs')
+})
+```
+
+<Tip>
+  Treat `contextBridge` like a public API surface. Only expose what the renderer explicitly needs, and validate any arguments before passing them to the main process.
+</Tip>
+
+## The sandbox option
+
+The `sandbox` option in `webPreferences` restricts the renderer process at the OS level, limiting its ability to use Node.js APIs even in preload scripts. When sandboxing is enabled, preload scripts are also sandboxed — they can still use `contextBridge` and `ipcRenderer`, but do not have access to the full Node.js API surface.
+
+```js title="main.js"
+const win = new BrowserWindow({
+  webPreferences: {
+    sandbox: true,
+    preload: path.join(__dirname, 'preload.js')
+  }
+})
+```
+
+<Note>
+  Sandboxing is enabled by default since Electron 20. Disabling context isolation also disables process sandboxing, regardless of how the `sandbox` option is set.
+</Note>
+
+## Usage with TypeScript
+
+When building with TypeScript, the renderer's `window` object won't have type information for APIs you expose via `contextBridge`. Add a declaration file to extend the `Window` interface:
+
+```ts title="preload.ts"
+contextBridge.exposeInMainWorld('electronAPI', {
+  loadPreferences: () => ipcRenderer.invoke('load-prefs')
+})
+```
+
+```ts title="interface.d.ts"
+export interface IElectronAPI {
+  loadPreferences: () => Promise<void>
+}
+
+declare global {
+  interface Window {
+    electronAPI: IElectronAPI
+  }
+}
+```
+
+With this in place, TypeScript will correctly type `window.electronAPI` in your renderer code:
+
+```ts title="renderer.ts"
+window.electronAPI.loadPreferences()
+```
+
+<Note>
+  `contextBridge` has some limitations on what types can cross the bridge. Custom class instances, Symbols, and functions with prototype chains are not supported. See the [`contextBridge` API docs](/api/context-bridge) for the full list of supported types.
+</Note>

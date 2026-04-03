@@ -1,0 +1,150 @@
+---
+title: "nativeImage"
+description: "Create and manipulate images for tray icons, dock icons, and other native UI elements."
+---
+
+The `nativeImage` module provides a unified API for working with images used in native UI — tray icons, dock icons, window icons, menu items, and notifications. Electron APIs that accept images can take either a file path string or a `NativeImage` instance.
+
+<Note>
+  `nativeImage` is available in both the **main process** and **renderer processes**. When calling from a renderer with context isolation enabled, use a preload script and [`contextBridge`](/api/context-bridge).
+</Note>
+
+## Creating images
+
+### `nativeImage.createFromPath(path)`
+
+Creates a `NativeImage` from a file on disk. Returns an empty image if the path doesn't exist or cannot be read.
+
+**Returns** `NativeImage`
+
+<ParamField path="path" type="string" required>
+  Absolute path to a PNG, JPEG, or (Windows only) ICO file.
+</ParamField>
+
+### `nativeImage.createFromBuffer(buffer[, options])`
+
+Creates a `NativeImage` from a raw buffer. Electron tries PNG then JPEG decoding.
+
+**Returns** `NativeImage`
+
+<ParamField path="buffer" type="Buffer" required>
+  Raw image data.
+</ParamField>
+
+<ParamField path="options.width" type="Integer">
+  Required for bitmap (raw pixel) buffers.
+</ParamField>
+
+<ParamField path="options.height" type="Integer">
+  Required for bitmap (raw pixel) buffers.
+</ParamField>
+
+<ParamField path="options.scaleFactor" type="number">
+  DPI scale factor. Defaults to `1.0`.
+</ParamField>
+
+### `nativeImage.createFromDataURL(dataURL)`
+
+Creates a `NativeImage` from a base64-encoded data URL.
+
+**Returns** `NativeImage`
+
+<ParamField path="dataURL" type="string" required>
+  `data:image/png;base64,...` or equivalent JPEG data URL.
+</ParamField>
+
+### `nativeImage.createEmpty()`
+
+Creates an empty, transparent `NativeImage`. Useful as a placeholder when you want to hide a tray icon without removing it.
+
+**Returns** `NativeImage`
+
+### `nativeImage.createThumbnailFromPath(path, size)` _macOS, Windows_
+
+Generates a thumbnail preview for a file.
+
+**Returns** `Promise<NativeImage>`
+
+<ParamField path="path" type="string" required>
+  Path to the source file.
+</ParamField>
+
+<ParamField path="size" type="{ width: number, height: number }" required>
+  Desired thumbnail dimensions. On Windows, only `width` is used and the height is calculated proportionally.
+</ParamField>
+
+## Instance methods
+
+Once you have a `NativeImage`, use these methods to convert or inspect it.
+
+| Method | Returns | Description |
+|---|---|---|
+| `image.toPNG([options])` | `Buffer` | PNG-encoded buffer. Pass `{ scaleFactor }` to pick a specific resolution. |
+| `image.toJPEG(quality)` | `Buffer` | JPEG-encoded buffer. `quality` is 0–100. |
+| `image.toDataURL([options])` | `string` | Base64 data URL. |
+| `image.toBitmap([options])` | `Buffer` | Raw BGRA pixel data. |
+| `image.getSize([scaleFactor])` | `{ width, height }` | Pixel dimensions. |
+| `image.isEmpty()` | `boolean` | `true` if the image has no data. |
+| `image.resize(options)` | `NativeImage` | Returns a resized copy. |
+| `image.crop(rect)` | `NativeImage` | Returns a cropped copy. |
+| `image.setTemplateImage(option)` | — | _macOS._ Mark or unmark as a template image. |
+| `image.isTemplateImage()` | `boolean` | _macOS._ Whether this is a template image. |
+
+## High-resolution images
+
+You can bundle multiple resolutions of the same image. Place them in the same directory with `@Nx` suffixes and reference the base path — Electron picks the appropriate resolution automatically.
+
+```plaintext
+images/
+├── icon.png
+├── icon@2x.png
+└── icon@3x.png
+```
+
+Supported suffixes: `@1x`, `@1.25x`, `@1.33x`, `@1.5x`, `@2x`, `@2.5x`, `@3x`, `@4x`, `@5x`.
+
+## Example
+
+```js title="main.js"
+const { app, BrowserWindow, Tray, nativeImage } = require('electron')
+const path = require('node:path')
+
+let tray
+
+app.whenReady().then(() => {
+  // Load a tray icon from disk
+  const icon = nativeImage.createFromPath(
+    path.join(__dirname, 'images', 'tray-icon.png')
+  )
+
+  tray = new Tray(icon)
+  tray.setToolTip('My App')
+
+  // Create a window with a custom icon
+  const win = new BrowserWindow({
+    icon: nativeImage.createFromPath(
+      path.join(__dirname, 'images', 'app-icon.png')
+    )
+  })
+  win.loadFile('index.html')
+})
+```
+
+<Tip>
+  Use PNG for cross-platform compatibility. PNG supports transparency and lossless compression. On Windows, provide multiple ICO sizes (16, 24, 32, 48, 64, 256 px) for correct rendering at different DPI scales.
+</Tip>
+
+## Template images (macOS)
+
+On macOS, a template image is a black-and-alpha image that the system colorizes based on context (e.g., light vs. dark menu bar). Name your file with a `Template` suffix — for example, `iconTemplate.png` — and Electron automatically sets the `isTemplatImage` flag.
+
+```js title="main.js"
+const icon = nativeImage.createFromPath(
+  path.join(__dirname, 'images', 'iconTemplate.png')
+)
+// icon.isTemplateImage() === true
+```
+
+## Process availability
+
+`nativeImage` is available in both the **main process** and **renderer processes**.

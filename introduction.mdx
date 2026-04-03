@@ -1,0 +1,63 @@
+---
+title: "Introduction"
+description: "What is Electron and why use it"
+---
+
+## What is Electron?
+
+Electron is a framework for building desktop applications using JavaScript, HTML, and CSS. By embedding [Chromium](https://www.chromium.org/) and [Node.js](https://nodejs.org/) into a single binary, Electron lets you maintain one JavaScript codebase and create cross-platform apps that work on Windows, macOS, and Linux — no native development experience required.
+
+Your renderer process is a full Chromium browser context, so you can use any web technology you already know. Your main process runs in Node.js, giving you access to the file system, native OS APIs, and the entire npm ecosystem.
+
+## Why use Electron?
+
+- **One codebase, three platforms.** Write your app once and ship it on Windows, macOS, and Linux without maintaining separate native codebases.
+- **Web skills transfer directly.** If you can build a web app, you can build an Electron app. HTML, CSS, JavaScript, and your existing npm packages all work.
+- **Native OS integration.** Access system APIs for menus, notifications, file dialogs, tray icons, auto-updates, and more through Electron's built-in modules.
+- **Large ecosystem.** Benefit from the full npm registry, plus Electron-specific tooling like Electron Forge for packaging and distribution.
+
+## Architecture overview
+
+Electron apps run across two types of processes:
+
+- **Main process** — A Node.js process that manages the app lifecycle, creates windows, and has full access to OS APIs. There is exactly one main process per app.
+- **Renderer process** — A Chromium process that renders your web UI. Each `BrowserWindow` runs its own renderer process, isolated from the main process for security.
+
+Because the main and renderer processes have different capabilities, Electron provides inter-process communication (IPC) to pass messages between them. A **preload script** runs in the renderer context before the page loads and acts as a secure bridge between the two worlds.
+
+<Note>
+  Renderer processes do not have access to Node.js APIs by default. Use the `contextBridge` API in a preload script to selectively expose the functionality your UI needs.
+</Note>
+
+## Who uses Electron?
+
+Electron powers many widely-used desktop applications, including:
+
+- [Visual Studio Code](https://github.com/Microsoft/vscode/) — Microsoft's popular code editor
+- **Slack** — Team messaging and collaboration
+- **Discord** — Voice, video, and text chat
+- **Figma** — Collaborative design tool
+- **1Password** — Password manager
+- **Skype** — Video calling
+
+You can find a broader list at [electronjs.org/apps](https://www.electronjs.org/apps).
+
+## Explore the docs
+
+<CardGroup cols={3}>
+  <Card title="Quick start" icon="rocket" href="/quickstart">
+    Build and run your first Electron app in minutes.
+  </Card>
+  <Card title="Process model" icon="diagram-project" href="/concepts/process-model">
+    Understand how the main and renderer processes work together.
+  </Card>
+  <Card title="API reference" icon="code" href="/api/app">
+    Browse every Electron module and its full API.
+  </Card>
+</CardGroup>
+
+## Getting help
+
+- **Community Discord** — Join the [Electron Discord server](https://discord.gg/electronjs) to ask questions and connect with other developers.
+- **GitHub issues** — If you think you've found a bug, check the [issue tracker](https://github.com/electron/electron/issues) or file a new report.
+- **Electron Fiddle** — [Electron Fiddle](https://www.electronjs.org/fiddle) is a sandbox app for experimenting with Electron APIs and prototyping features without any project setup.

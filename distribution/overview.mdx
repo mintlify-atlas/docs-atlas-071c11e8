@@ -1,0 +1,65 @@
+---
+title: "Distribution Overview"
+description: "Package and distribute your Electron app to users"
+---
+
+Once your app is ready for production, you need to package it, sign it, and deliver it to your users. Electron provides first-class tooling for each step of this process.
+
+## The distribution workflow
+
+Getting an Electron app to users involves four main concerns:
+
+1. **Packaging** — Bundle your app code and assets with the Electron binary into a platform-native distributable (`.exe`, `.dmg`, `.deb`, etc.).
+2. **Code signing** — Digitally certify your app so that macOS Gatekeeper and Windows SmartScreen allow it to run without warnings.
+3. **Publishing** — Host your installers where users can download them, either directly or through an app store.
+4. **Auto-updating** — Ship new versions to users without requiring them to manually download and reinstall.
+
+## Recommended tool: Electron Forge
+
+[Electron Forge](https://www.electronforge.io) is the officially recommended tool for packaging and distributing Electron applications. It wraps lower-level tools like `@electron/packager`, `@electron/osx-sign`, `@electron/notarize`, and `electron-winstaller` behind a single, unified interface.
+
+Forge handles:
+
+- Creating platform-native installers via **Makers**
+- Code signing via its `packagerConfig`
+- Publishing to GitHub Releases, S3, and other targets via **Publishers**
+- Auto-update integration
+
+<Tip>
+If you are starting a new project, use `npx create-electron-app` to scaffold a project pre-configured with Electron Forge. If you already have an app, run `npx electron-forge import` to migrate it.
+</Tip>
+
+## Alternative tools
+
+If Electron Forge does not fit your project, the community maintains other options:
+
+- **[electron-builder](https://github.com/electron-userland/electron-builder)** — A complete packaging and distribution solution with its own auto-updater integration.
+- **[Hydraulic Conveyor](https://hydraulic.dev)** — Supports cross-platform builds and signing from a single machine, and uses platform-native update mechanisms (Sparkle, MSIX, Linux repositories). Commercial tool, free for open source.
+
+These tools are maintained by the Electron community and do not carry official support from the Electron project.
+
+## Platform stores
+
+In addition to direct downloads, you can distribute through each operating system's app store. Each store requires its own submission process and build configuration:
+
+- **Windows Store** — Distribute via the Microsoft Store using an MSIX package.
+- **Mac App Store** — Distribute via the Apple Mac App Store using a sandboxed build.
+- **Snapcraft (Linux)** — Distribute on Linux via the Snap Store for broad distribution across Linux distributions.
+
+<Note>
+App store submissions require a separate build configuration from your direct-download build. Code signing requirements also differ — for example, Mac App Store builds use a different certificate type than Developer ID builds.
+</Note>
+
+## Next steps
+
+<CardGroup cols={3}>
+  <Card title="Packaging your app" icon="box" href="/distribution/packaging">
+    Bundle your app into platform-native installers using Electron Forge and its makers.
+  </Card>
+  <Card title="Code signing" icon="shield-check" href="/distribution/code-signing">
+    Sign your app with macOS Developer ID or a Windows EV certificate so users can install it without warnings.
+  </Card>
+  <Card title="Auto updates" icon="arrow-rotate-right" href="/distribution/auto-updates">
+    Ship over-the-air updates to users using the `autoUpdater` module and an update server.
+  </Card>
+</CardGroup>

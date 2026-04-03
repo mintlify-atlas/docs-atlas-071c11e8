@@ -1,0 +1,122 @@
+---
+title: ipcMain
+description: Receive and handle messages from renderer processes in the main process.
+---
+
+`ipcMain` is an event emitter that lets the **main process** listen for messages sent from renderer processes via `ipcRenderer`. You can handle one-way fire-and-forget messages with `on`/`once`, or two-way invoke/handle pairs for request-response patterns.
+
+<Note>
+  `ipcMain` is only available in the **main process**.
+</Note>
+
+## Methods
+
+### `ipcMain.on(channel, listener)`
+
+Listens for messages on `channel`. The `listener` is called every time a message arrives.
+
+<ParamField path="channel" type="string" required>
+  The channel name to listen on.
+</ParamField>
+<ParamField path="listener" type="Function" required>
+  Called with `(event, ...args)` whenever a message is received on the channel.
+</ParamField>
+
+### `ipcMain.once(channel, listener)`
+
+Same as `on`, but the listener fires only once then is automatically removed.
+
+<ParamField path="channel" type="string" required>
+  The channel name to listen on.
+</ParamField>
+<ParamField path="listener" type="Function" required>
+  One-time handler called with `(event, ...args)`.
+</ParamField>
+
+### `ipcMain.off(channel, listener)`
+
+Removes a specific listener from `channel`.
+
+<ParamField path="channel" type="string" required>
+  The channel to remove the listener from.
+</ParamField>
+<ParamField path="listener" type="Function" required>
+  The exact listener function reference to remove.
+</ParamField>
+
+### `ipcMain.removeAllListeners([channel])`
+
+Removes all listeners from `channel`, or from all channels if none is specified.
+
+<ParamField path="channel" type="string">
+  The channel to clear. Omit to clear all channels.
+</ParamField>
+
+### `ipcMain.handle(channel, listener)`
+
+Registers a handler for `ipcRenderer.invoke(channel, ...args)`. The handler can return a value or a `Promise`. The resolved value is sent back to the renderer as the result of `invoke`.
+
+<ParamField path="channel" type="string" required>
+  The channel name to handle.
+</ParamField>
+<ParamField path="listener" type="Function<Promise<any> | any>" required>
+  Handler called with `(event, ...args)`. Return a value or `Promise` to reply to the renderer.
+</ParamField>
+
+### `ipcMain.handleOnce(channel, listener)`
+
+Like `handle`, but the handler is removed after the first invocation.
+
+### `ipcMain.removeHandler(channel)`
+
+Removes the `handle` handler for `channel`.
+
+<ParamField path="channel" type="string" required>
+  The channel whose handler should be removed.
+</ParamField>
+
+## Example
+
+<CodeGroup>
+
+```javascript main.js
+const { ipcMain } = require('electron')
+
+// One-way message
+ipcMain.on('log-message', (event, message) => {
+  console.log('Renderer says:', message)
+})
+
+// Two-way: invoke/handle
+ipcMain.handle('read-file', async (event, filePath) => {
+  const fs = require('node:fs/promises')
+  const contents = await fs.readFile(filePath, 'utf8')
+  return contents
+})
+```
+
+```javascript preload.js
+const { contextBridge, ipcRenderer } = require('electron')
+
+contextBridge.exposeInMainWorld('api', {
+  log: (msg) => ipcRenderer.send('log-message', msg),
+  readFile: (path) => ipcRenderer.invoke('read-file', path),
+})
+```
+
+</CodeGroup>
+
+<Warning>
+  Errors thrown inside `handle` are serialized before being sent to the renderer. Only the `message` property is preserved — custom error properties are lost. See [electron#24427](https://github.com/electron/electron/issues/24427).
+</Warning>
+
+## Replying to messages
+
+Inside an `on` listener, use `event.reply(channel, ...args)` to send a message back to the sender frame (including iframes). Use `event.sender.send(...)` to always target the main frame.
+
+For synchronous replies, set `event.returnValue` directly (not recommended for new code — use `handle`/`invoke` instead).
+
+## Related APIs
+
+- [app](/api/app) — application lifecycle
+- [BrowserWindow](/api/browser-window) — send messages to a specific window via `win.webContents.send()`

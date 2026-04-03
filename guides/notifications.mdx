@@ -1,0 +1,183 @@
+---
+title: "Notifications"
+description: "Display native desktop notifications"
+---
+
+Electron lets you display native desktop notifications from both the main process and the renderer process. The approach differs depending on which process you use.
+
+## Main process notifications
+
+In the main process, use Electron's built-in `Notification` class. Create an instance and call `.show()` to display it.
+
+```javascript title="main.js"
+const { Notification } = require('electron')
+
+new Notification({
+  title: 'Download complete',
+  body: 'Your file has been saved to ~/Downloads.'
+}).show()
+```
+
+### Notification options
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `title` | string | Displayed at the top of the notification. |
+| `body` | string | Main notification text, displayed below the title. |
+| `icon` | string \| NativeImage | Path to an icon image file. |
+| `silent` | boolean | When `true`, suppresses the OS notification sound. |
+| `urgency` | string | `'normal'`, `'critical'`, or `'low'` (Linux and Windows only). |
+| `subtitle` | string | Displayed below the title (macOS only). |
+| `hasReply` | boolean | Adds an inline reply field (macOS and Windows). |
+| `timeoutType` | string | `'default'` or `'never'` — controls auto-dismiss (Linux and Windows). |
+
+### Listening to notification events
+
+```javascript title="main.js"
+const { Notification } = require('electron')
+
+const notification = new Notification({
+  title: 'New message',
+  body: 'You have a new message from Alice.',
+  icon: '/path/to/icon.png',
+  silent: false
+})
+
+notification.on('show', () => {
+  console.log('Notification shown')
+})
+
+notification.on('click', () => {
+  console.log('Notification clicked — bring window to front')
+})
+
+notification.on('close', () => {
+  console.log('Notification dismissed')
+})
+
+notification.show()
+```
+
+### Full main process example
+
+```javascript title="main.js"
+const { app, BrowserWindow, Notification } = require('electron')
+
+function createWindow () {
+  const win = new BrowserWindow({ width: 800, height: 600 })
+  win.loadFile('index.html')
+}
+
+app.whenReady().then(() => {
+  createWindow()
+
+  new Notification({
+    title: 'App ready',
+    body: 'The application has finished loading.'
+  }).show()
+})
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit()
+})
+```
+
+## Renderer process notifications
+
+In the renderer process, use the standard [Web Notifications API](https://developer.mozilla.org/en-US/docs/Web/API/Notifications_API). No Electron-specific imports are needed.
+
+```javascript title="renderer.js"
+const notification = new Notification('New message', {
+  body: 'You have a new message from Alice.'
+})
+
+notification.onclick = () => {
+  console.log('Notification clicked')
+}
+```
+
+<Note>
+  If you need to trigger a notification from the renderer but handle it in the main process (for example, to focus a window on click), use IPC to bridge the two processes. See the [IPC guide](/concepts/ipc).
+</Note>
+
+## Checking support
+
+Before showing a notification, you can check whether the current system supports them:
+
+```javascript title="main.js"
+const { Notification } = require('electron')
+
+if (Notification.isSupported()) {
+  new Notification({ title: 'Hello!', body: 'Notifications are supported.' }).show()
+}
+```
+
+## Platform differences
+
+<Tabs>
+  <Tab title="Windows">
+    On Windows, your app needs a Start Menu shortcut with a valid `AppUserModelID` for notifications to appear. Electron handles this automatically when you package with Squirrel.Windows.
+
+    During development, call `app.setAppUserModelId(process.execPath)` manually:
+
+    ```javascript title="main.js"
+    const { app } = require('electron')
+
+    app.setAppUserModelId(process.execPath)
+    ```
+
+    <Tip>
+      To quickly enable notifications in development, pin `node_modules\electron\dist\electron.exe` to your Start Menu, then call `app.setAppUserModelId(process.execPath)`.
+    </Tip>
+
+    Windows supports advanced notifications with custom templates and images via the userland package [`electron-windows-notifications`](https://github.com/felixrieseberg/electron-windows-notifications). For interactive reply notifications, use [`electron-windows-interactive-notifications`](https://github.com/felixrieseberg/electron-windows-interactive-notifications).
+
+    To detect whether the system will display your notification at runtime, use the [`windows-notification-state`](https://github.com/felixrieseberg/windows-notification-state) package.
+
+    The `urgency` option set to `'critical'` on Windows sorts the notification higher in Action Center but does not prevent auto-dismissal. Set `timeoutType: 'never'` alongside it to keep the notification visible.
+  </Tab>
+  <Tab title="macOS">
+    On macOS, your app must be **code-signed** for notification events to fire correctly. This is a requirement of Apple's `UNNotification` API. Unsigned binaries will emit a `failed` event instead of showing a notification.
+
+    ```javascript title="main.js"
+    const notification = new Notification({ title: 'Hello', body: 'From macOS' })
+
+    notification.on('failed', (event, error) => {
+      console.error('Notification failed:', error)
+      // Likely running unsigned — sign your app for production
+    })
+
+    notification.show()
+    ```
+
+    Additional macOS-specific options:
+    - `subtitle` — secondary line displayed below the title
+    - `sound` — name of a system sound file to play
+    - `hasReply` — adds an inline reply input field
+    - `groupId` — groups related notifications together in Notification Center
+
+    Notifications are limited to **256 bytes** and will be truncated if exceeded.
+
+    To detect notification permission state at runtime, use the [`macos-notification-state`](https://github.com/felixrieseberg/macos-notification-state) package.
+  </Tab>
+  <Tab title="Linux">
+    On Linux, Electron sends notifications via `libnotify`, which supports any desktop environment that implements the [Desktop Notifications Specification](https://specifications.freedesktop.org/notification-spec/notification-spec-latest.html) — including GNOME, KDE, Unity, Cinnamon, and Enlightenment.
+
+    Linux-specific options:
+    - `urgency`: `'low'`, `'normal'`, or `'critical'`
+    - `timeoutType`: `'default'` or `'never'`
+
+    ```javascript title="main.js"
+    new Notification({
+      title: 'Disk full',
+      body: 'You are running low on storage.',
+      urgency: 'critical',
+      timeoutType: 'never'
+    }).show()
+    ```
+  </Tab>
+</Tabs>
+
+## Further reading
+
+- [IPC guide](/concepts/ipc)

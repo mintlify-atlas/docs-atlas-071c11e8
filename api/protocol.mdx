@@ -1,0 +1,103 @@
+---
+title: protocol
+description: Register custom URL schemes and intercept existing protocol requests in the main process.
+---
+
+The `protocol` module lets you register handlers for custom URL schemes (e.g. `app://`) or intercept built-in ones (e.g. `https`). Handlers receive a standard `Request` object and must return a `Response` or `Promise<Response>`, making them compatible with the Fetch API.
+
+<Note>
+  `protocol` is only available in the **main process**. Most methods require the `app` `ready` event to have fired.
+</Note>
+
+## Methods
+
+### `protocol.registerSchemesAsPrivileged(customSchemes)`
+
+Grants privileges to custom schemes before the app is ready. **Must be called before `app` emits `ready`** and can only be called once.
+
+<ParamField path="customSchemes" type="CustomScheme[]" required>
+  Array of `{ scheme, privileges }` objects. Available privileges:
+  - `standard` — enables relative URL resolution and web storage APIs
+  - `secure` — treated as a secure origin (like `https`)
+  - `bypassCSP` — bypasses Content Security Policy
+  - `supportFetchAPI` — enables `fetch()` from the scheme
+  - `stream` — required for `<video>`/`<audio>` streaming responses
+</ParamField>
+
+<Warning>
+  If you load a custom scheme in a `BrowserWindow` without registering it as `standard`, relative URLs and storage APIs (cookies, localStorage, IndexedDB) will not work.
+</Warning>
+
+### `protocol.handle(scheme, handler)`
+
+Registers a request handler for `scheme`. All requests to URLs beginning with `scheme://` are routed to `handler`.
+
+<ParamField path="scheme" type="string" required>
+  The URL scheme to handle (the part before `:`), e.g. `'app'` or `'atom'`.
+</ParamField>
+<ParamField path="handler" type="Function" required>
+  Called with a `GlobalRequest` object. Must return a `Response` or `Promise<Response>`.
+</ParamField>
+
+### `protocol.unhandle(scheme)`
+
+Removes a previously registered handler for `scheme`.
+
+<ParamField path="scheme" type="string" required>
+  The scheme to stop handling.
+</ParamField>
+
+### `protocol.isProtocolHandled(scheme)`
+
+Returns `boolean` — whether a handler is currently registered for `scheme`.
+
+## Custom sessions
+
+If a `BrowserWindow` uses a custom `partition` or `session`, you must register the protocol on **that session's** `protocol` object — not the global `protocol` module.
+
+```javascript main.js
+const ses = session.fromPartition('persist:example')
+ses.protocol.handle('app', handler)
+```
+
+## Example
+
+```javascript main.js
+const { app, net, protocol } = require('electron')
+const path = require('node:path')
+const { pathToFileURL } = require('node:url')
+
+// Register privileges before app is ready
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'app',
+    privileges: { standard: true, secure: true, supportFetchAPI: true },
+  },
+])
+
+app.whenReady().then(() => {
+  protocol.handle('app', (request) => {
+    const { pathname } = new URL(request.url)
+
+    // Serve files from the app bundle
+    const filePath = path.resolve(__dirname, 'dist', pathname.slice(1))
+    const relativePath = path.relative(path.join(__dirname, 'dist'), filePath)
+
+    // Guard against path traversal attacks
+    if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+      return new Response('Forbidden', { status: 403 })
+    }
+
+    return net.fetch(pathToFileURL(filePath).toString())
+  })
+})
+```
+
+<Tip>
+  Always validate that resolved file paths stay within your intended directory to prevent path traversal attacks.
+</Tip>
+
+## Related APIs
+
+- [session](/api/session) — register protocols on a specific session
+- [app](/api/app) — `app.whenReady()` must resolve before calling `protocol.handle`

@@ -1,0 +1,116 @@
+---
+title: app
+description: Control your application's event lifecycle from the main process.
+---
+
+The `app` module controls your application's event lifecycle. Use it to respond to system events, manage paths, quit or relaunch the process, and run code once Electron has finished initializing.
+
+<Note>
+  `app` is only available in the **main process**.
+</Note>
+
+## Key events
+
+### `ready`
+
+Emitted once, when Electron has finished initializing. You should create windows and register protocol handlers inside this event (or use the `app.whenReady()` promise).
+
+<ParamField path="event" type="Event" required>
+  The Electron event object.
+</ParamField>
+<ParamField path="launchInfo" type="Record<string, any>">
+  macOS only. Contains `userInfo` from the `NSUserNotification` or `UNNotificationResponse` used to open the app.
+</ParamField>
+
+### `window-all-closed`
+
+Emitted when all windows have been closed. If you do not subscribe to this event, Electron quits automatically. Subscribe to override that behavior.
+
+### `before-quit`
+
+Emitted before the application starts closing its windows. Call `event.preventDefault()` to cancel the quit.
+
+<ParamField path="event" type="Event" required>
+  Call `event.preventDefault()` to abort the quit.
+</ParamField>
+
+### `will-quit`
+
+Emitted when all windows have been closed and the application is about to quit. Call `event.preventDefault()` to cancel.
+
+### `activate` _(macOS)_
+
+Emitted when the application is activated — for example, when the user clicks the Dock icon.
+
+<ParamField path="hasVisibleWindows" type="boolean" required>
+  Whether the app has any visible windows at the time of activation.
+</ParamField>
+
+## Key methods
+
+### `app.quit()`
+
+Attempts to close all windows. Fires `before-quit` and `will-quit` in sequence. Individual windows can cancel the quit from their `beforeunload` handler.
+
+### `app.exit([exitCode])`
+
+<ParamField path="exitCode" type="Integer" default="0">
+  The process exit code.
+</ParamField>
+
+Exits immediately without asking users to confirm. `before-quit` and `will-quit` are **not** emitted.
+
+### `app.relaunch([options])`
+
+<ParamField path="options.args" type="string[]">
+  Command-line arguments for the new instance.
+</ParamField>
+<ParamField path="options.execPath" type="string">
+  Executable to launch instead of the current app.
+</ParamField>
+
+Schedules a relaunch on next exit. Call `app.exit()` immediately after to restart now.
+
+### `app.whenReady()`
+
+Returns `Promise<void>` — resolves when Electron is initialized. Use this as a convenient alternative to listening for the `ready` event.
+
+### `app.getPath(name)`
+
+<ParamField path="name" type="string" required>
+  One of: `home`, `appData`, `userData`, `sessionData`, `temp`, `exe`, `desktop`, `documents`, `downloads`, `logs`, `crashDumps`.
+</ParamField>
+
+Returns `string` — the path for the named special directory. Throws if the name is unknown.
+
+### `app.isReady()`
+
+Returns `boolean` — `true` if Electron has finished initializing.
+
+## Example
+
+```javascript main.js
+const { app, BrowserWindow } = require('electron')
+
+app.whenReady().then(() => {
+  const win = new BrowserWindow({ width: 800, height: 600 })
+  win.loadFile('index.html')
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      const win = new BrowserWindow({ width: 800, height: 600 })
+      win.loadFile('index.html')
+    }
+  })
+})
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit()
+})
+```
+
+## Related APIs
+
+- [BrowserWindow](/api/browser-window) — create and manage windows
+- [ipcMain](/api/ipc-main) — receive messages from renderer processes
+- [session](/api/session) — manage cookies, cache, and network settings

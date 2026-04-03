@@ -1,0 +1,116 @@
+---
+title: "contextBridge"
+description: "Safely expose APIs from a preload script to isolated renderer contexts."
+---
+
+The `contextBridge` module creates a secure, synchronous bridge between an isolated preload script (the Isolated World) and the page's JavaScript (the Main World). It is the only safe way to give renderer code access to Node.js or Electron APIs when context isolation is enabled.
+
+<Note>
+  `contextBridge` runs in the **renderer process** (preload scripts only). Context isolation is on by default since Electron 12. See [Context Isolation](/concepts/context-isolation) for background.
+</Note>
+
+## Methods
+
+### `contextBridge.exposeInMainWorld(apiKey, api)`
+
+Injects `api` onto `window[apiKey]` in the Main World. Use this to expose a carefully scoped API surface to your renderer.
+
+<ParamField path="apiKey" type="string" required>
+  Property name on `window`. For example, `'electronAPI'` makes the API accessible as `window.electronAPI`.
+</ParamField>
+
+<ParamField path="api" type="any" required>
+  The API to expose. Must be a `Function`, `string`, `number`, `Array`, `boolean`, or a plain object whose values are one of the same types (recursively). Promises, `Buffer`, and typed arrays are also supported.
+
+  Functions are proxied across the context boundary — other values are deeply copied and frozen. Updates on either side of the bridge do not propagate to the other.
+</ParamField>
+
+### `contextBridge.exposeInIsolatedWorld(worldId, apiKey, api)`
+
+Like `exposeInMainWorld`, but targets a specific isolated world by numeric ID. Useful when you create additional isolated worlds with `webFrame.executeJavaScriptInIsolatedWorld`.
+
+<ParamField path="worldId" type="Integer" required>
+  World to inject into. `0` is the default (Main World). `999` is Electron's context isolation world. Use `1000` or higher for custom worlds.
+</ParamField>
+
+<ParamField path="apiKey" type="string" required>
+  Property name on `window` within the target world.
+</ParamField>
+
+<ParamField path="api" type="any" required>
+  API to expose. Same type constraints as `exposeInMainWorld`.
+</ParamField>
+
+### `contextBridge.executeInMainWorld(executionScript)` _Experimental_
+
+Executes a function in the Main World and returns its result. The function is serialized before transfer, so bound variables and closure scope are not available.
+
+**Returns** `any`
+
+<ParamField path="executionScript.func" type="Function" required>
+  Function to execute in the Main World. Must be self-contained — no external references.
+</ParamField>
+
+<ParamField path="executionScript.args" type="any[]">
+  Arguments passed to `func`. Copied between worlds using the same rules as `exposeInMainWorld`.
+</ParamField>
+
+## Example
+
+<CodeGroup>
+
+```js preload.js
+const { contextBridge, ipcRenderer } = require('electron')
+
+contextBridge.exposeInMainWorld('electronAPI', {
+  // Simple one-way message
+  setTitle: (title) => ipcRenderer.send('set-title', title),
+
+  // Invoke with response
+  readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
+
+  // Subscribe to main-process events
+  onThemeChange: (callback) =>
+    ipcRenderer.on('theme-changed', (_event, theme) => callback(theme)),
+
+  // Plain data values (copied and frozen)
+  platform: process.platform,
+  versions: { ...process.versions }
+})
+```
+
+```js renderer.js
+// Access the exposed API through window
+window.electronAPI.setTitle('Hello from renderer')
+
+window.electronAPI.onThemeChange((theme) => {
+  document.body.dataset.theme = theme
+})
+
+const content = await window.electronAPI.readFile('/path/to/file.txt')
+console.log(content)
+```
+
+</CodeGroup>
+
+<Warning>
+  Do not pass `ipcRenderer` itself, `event` objects, or any object containing Electron internals through `exposeInMainWorld`. Passing raw Electron objects exposes powerful APIs to untrusted web content. See [Security](/concepts/security) for guidance.
+</Warning>
+
+## Supported types
+
+The bridge can transfer the following types between worlds:
+
+| Type | Behavior |
+|---|---|
+| Primitives (`string`, `number`, `boolean`, `null`, `undefined`) | Copied |
+| `Array` | Deep copied and frozen |
+| Plain `Object` | Deep copied and frozen |
+| `Function` | Proxied |
+| `Promise` | Proxied |
+| `Buffer` | Copied |
+| Typed arrays | Copied |
+
+## Process availability
+
+`contextBridge` is available only in the **renderer process**, and is primarily intended for use in preload scripts.

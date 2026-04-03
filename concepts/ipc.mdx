@@ -1,0 +1,320 @@
+---
+title: "Inter-Process Communication"
+description: "Send messages between main and renderer processes"
+---
+
+Inter-process communication (IPC) is how the main and renderer processes talk to each other. Because each process has different responsibilities and capabilities — the main process owns Node.js APIs and native functionality, while the renderer displays UI — IPC is the only way to perform tasks like opening a native dialog from a button click, or pushing data from a native menu into your web content.
+
+Electron processes communicate by passing messages through developer-defined **channels** using the [`ipcMain`](/api/ipc-main) and [`ipcRenderer`](/api/ipc-renderer) modules. Channels are arbitrary strings — you can name them anything — and the same channel name can be used in both directions.
+
+<Note>
+  Before implementing IPC, make sure you understand preload scripts and context isolation. IPC is always exposed to the renderer through a preload script using `contextBridge`, not by giving the renderer direct access to `ipcRenderer`. See [Context Isolation](/concepts/context-isolation) for background.
+</Note>
+
+## Pattern 1: Renderer to main (one-way)
+
+Use this pattern when your renderer needs to trigger a main process action but doesn't need a response back — for example, updating the window title.
+
+Send the message with `ipcRenderer.send` and receive it in the main process with `ipcMain.on`.
+
+<Steps>
+  <Step title="Listen in the main process">
+    Register a listener on the channel using `ipcMain.on`:
+
+    ```js title="main.js"
+    const { app, BrowserWindow, ipcMain } = require('electron')
+    const path = require('node:path')
+
+    function handleSetTitle(event, title) {
+      const webContents = event.sender
+      const win = BrowserWindow.fromWebContents(webContents)
+      win.setTitle(title)
+    }
+
+    function createWindow() {
+      const mainWindow = new BrowserWindow({
+        webPreferences: {
+          preload: path.join(__dirname, 'preload.js')
+        }
+      })
+      mainWindow.loadFile('index.html')
+    }
+
+    app.whenReady().then(() => {
+      ipcMain.on('set-title', handleSetTitle)
+      createWindow()
+    })
+    ```
+
+    The callback receives an `IpcMainEvent` object and any arguments sent with the message. Use `event.sender` to get the `webContents` of the sending renderer, then look up the parent `BrowserWindow`.
+  </Step>
+
+  <Step title="Expose the sender via preload">
+    In your preload script, expose a safe wrapper around `ipcRenderer.send` using `contextBridge`:
+
+    ```js title="preload.js"
+    const { contextBridge, ipcRenderer } = require('electron')
+
+    contextBridge.exposeInMainWorld('electronAPI', {
+      setTitle: (title) => ipcRenderer.send('set-title', title)
+    })
+    ```
+
+    <Warning>
+      Never expose `ipcRenderer.send` directly to the renderer. Always wrap it in a function with a specific channel name. This prevents the renderer from sending arbitrary IPC messages.
+    </Warning>
+  </Step>
+
+  <Step title="Call the API from the renderer">
+    Use the exposed `window.electronAPI.setTitle` function in your renderer code:
+
+    ```js title="renderer.js"
+    const setButton = document.getElementById('btn')
+    const titleInput = document.getElementById('title')
+
+    setButton.addEventListener('click', () => {
+      const title = titleInput.value
+      window.electronAPI.setTitle(title)
+    })
+    ```
+  </Step>
+</Steps>
+
+## Pattern 2: Renderer to main (two-way)
+
+Use this pattern when the renderer needs to call a main process function and wait for a result — for example, opening a native file dialog and getting back the selected path.
+
+Use `ipcRenderer.invoke` paired with `ipcMain.handle`. The `invoke` call returns a Promise that resolves with whatever `handle` returns.
+
+<Steps>
+  <Step title="Register a handler in the main process">
+    ```js title="main.js"
+    const { app, BrowserWindow, dialog, ipcMain } = require('electron')
+    const path = require('node:path')
+
+    async function handleFileOpen() {
+      const { canceled, filePaths } = await dialog.showOpenDialog({})
+      if (!canceled) {
+        return filePaths[0]
+      }
+    }
+
+    function createWindow() {
+      const mainWindow = new BrowserWindow({
+        webPreferences: {
+          preload: path.join(__dirname, 'preload.js')
+        }
+      })
+      mainWindow.loadFile('index.html')
+    }
+
+    app.whenReady().then(() => {
+      ipcMain.handle('dialog:openFile', handleFileOpen)
+      createWindow()
+    })
+    ```
+
+    <Note>
+      The `dialog:` prefix in the channel name is a convention for readability — it has no functional effect. Use namespacing to keep channels organized.
+    </Note>
+  </Step>
+
+  <Step title="Expose the invoker via preload">
+    ```js title="preload.js"
+    const { contextBridge, ipcRenderer } = require('electron')
+
+    contextBridge.exposeInMainWorld('electronAPI', {
+      openFile: () => ipcRenderer.invoke('dialog:openFile')
+    })
+    ```
+  </Step>
+
+  <Step title="Call and await the result in the renderer">
+    ```js title="renderer.js"
+    const btn = document.getElementById('btn')
+    const filePathElement = document.getElementById('filePath')
+
+    btn.addEventListener('click', async () => {
+      const filePath = await window.electronAPI.openFile()
+      filePathElement.innerText = filePath
+    })
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+  Errors thrown in `ipcMain.handle` are serialized before being sent back to the renderer. Only the `message` property of the original error reaches the renderer — the full stack trace is not available.
+</Warning>
+
+### Legacy approaches (avoid)
+
+Before `ipcRenderer.invoke` was added in Electron 7, two-way IPC was done differently. These patterns are documented for reference only.
+
+<AccordionGroup>
+  <Accordion title="Using ipcRenderer.send with a reply channel">
+    You could send a message and listen for a separate reply channel:
+
+    ```js title="preload.js"
+    const { ipcRenderer } = require('electron')
+
+    ipcRenderer.on('asynchronous-reply', (_event, arg) => {
+      console.log(arg) // "pong"
+    })
+    ipcRenderer.send('asynchronous-message', 'ping')
+    ```
+
+    ```js title="main.js"
+    ipcMain.on('asynchronous-message', (event, arg) => {
+      console.log(arg) // "ping"
+      event.reply('asynchronous-reply', 'pong')
+    })
+    ```
+
+    This is harder to manage because you need a separate listener for each reply, with no built-in way to pair requests and responses.
+  </Accordion>
+
+  <Accordion title="Using ipcRenderer.sendSync">
+    `sendSync` blocks the renderer until a reply is received:
+
+    ```js title="main.js"
+    ipcMain.on('synchronous-message', (event, arg) => {
+      console.log(arg) // "ping"
+      event.returnValue = 'pong'
+    })
+    ```
+
+    ```js title="preload.js"
+    const { ipcRenderer } = require('electron')
+
+    const result = ipcRenderer.sendSync('synchronous-message', 'ping')
+    console.log(result) // "pong"
+    ```
+
+    Avoid this API. Blocking the renderer process while waiting for a reply will freeze your UI.
+  </Accordion>
+</AccordionGroup>
+
+## Pattern 3: Main to renderer
+
+To push data from the main process to a renderer — for example, from a native menu item — you send a message via the renderer's `webContents` instance using `webContents.send`. The renderer listens with `ipcRenderer.on`.
+
+<Steps>
+  <Step title="Send a message from the main process">
+    Use `webContents.send` with the target `BrowserWindow`'s `webContents`:
+
+    ```js title="main.js"
+    const { app, BrowserWindow, Menu } = require('electron')
+    const path = require('node:path')
+
+    function createWindow() {
+      const mainWindow = new BrowserWindow({
+        webPreferences: {
+          preload: path.join(__dirname, 'preload.js')
+        }
+      })
+
+      const menu = Menu.buildFromTemplate([
+        {
+          label: app.name,
+          submenu: [
+            {
+              click: () => mainWindow.webContents.send('update-counter', 1),
+              label: 'Increment'
+            },
+            {
+              click: () => mainWindow.webContents.send('update-counter', -1),
+              label: 'Decrement'
+            }
+          ]
+        }
+      ])
+      Menu.setApplicationMenu(menu)
+
+      mainWindow.loadFile('index.html')
+    }
+    ```
+  </Step>
+
+  <Step title="Expose the listener via preload">
+    ```js title="preload.js"
+    const { contextBridge, ipcRenderer } = require('electron')
+
+    contextBridge.exposeInMainWorld('electronAPI', {
+      onUpdateCounter: (callback) =>
+        ipcRenderer.on('update-counter', (_event, value) => callback(value))
+    })
+    ```
+
+    <Warning>
+      Do not pass the callback directly to `ipcRenderer.on`. The raw IPC event object includes a `sender` property that would expose the underlying `ipcRenderer` instance to the renderer. Always wrap the callback to pass only the data you intend to share.
+    </Warning>
+  </Step>
+
+  <Step title="Handle the message in the renderer">
+    ```js title="renderer.js"
+    const counter = document.getElementById('counter')
+
+    window.electronAPI.onUpdateCounter((value) => {
+      const oldValue = Number(counter.innerText)
+      const newValue = oldValue + value
+      counter.innerText = newValue.toString()
+    })
+    ```
+  </Step>
+</Steps>
+
+### Sending a reply back to main
+
+There's no `invoke`-equivalent for main-to-renderer IPC. To send a reply, expose an additional `ipcRenderer.send` call in your preload and call it from within the listener callback:
+
+```js title="preload.js"
+const { contextBridge, ipcRenderer } = require('electron')
+
+contextBridge.exposeInMainWorld('electronAPI', {
+  onUpdateCounter: (callback) =>
+    ipcRenderer.on('update-counter', (_event, value) => callback(value)),
+  counterValue: (value) => ipcRenderer.send('counter-value', value)
+})
+```
+
+```js title="renderer.js"
+window.electronAPI.onUpdateCounter((value) => {
+  const oldValue = Number(counter.innerText)
+  const newValue = oldValue + value
+  counter.innerText = newValue.toString()
+  window.electronAPI.counterValue(newValue)
+})
+```
+
+```js title="main.js"
+ipcMain.on('counter-value', (_event, value) => {
+  console.log(value)
+})
+```
+
+## Pattern 4: Between renderers
+
+There is no direct renderer-to-renderer IPC via `ipcMain`/`ipcRenderer`. You have two options:
+
+<CardGroup cols={2}>
+  <Card title="Main process as message broker" icon="arrows-left-right">
+    Send a message from one renderer to the main process, then forward it to the target renderer using `webContents.send`. Simple to set up but adds latency and couples both renderers to the main process.
+  </Card>
+  <Card title="MessagePort" icon="plug">
+    Pass a [`MessagePort`](https://developer.mozilla.org/en-US/docs/Web/API/MessagePort) from the main process to both renderers during setup. After the initial handshake, renderers can communicate directly without involving the main process.
+  </Card>
+</CardGroup>
+
+## Object serialization
+
+Electron uses the [Structured Clone Algorithm](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm) to serialize objects passed through IPC channels. Not everything can be serialized.
+
+<Warning>
+  The following types **cannot** be sent over IPC channels:
+
+  - DOM objects (`Element`, `Location`, `DOMMatrix`, etc.)
+  - Node.js objects backed by C++ classes (`process.env`, parts of `Stream`)
+  - Electron objects backed by C++ classes (`WebContents`, `BrowserWindow`, `WebFrame`)
+
+  Attempting to send these will either throw an error or result in an empty object on the receiving end.
+</Warning>

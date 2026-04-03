@@ -1,0 +1,175 @@
+---
+title: "Process Model"
+description: "Understand Electron's multi-process architecture"
+---
+
+Electron inherits its multi-process architecture from Chromium, making it architecturally similar to a modern web browser. Understanding how these processes relate to each other is fundamental to building Electron apps correctly.
+
+## Why multiple processes?
+
+In the early days of web browsers, all tabs ran in a single process. A single crash or hang could take down the entire browser. Chrome solved this by giving each tab its own renderer process, with a single browser process controlling the overall lifecycle.
+
+Electron follows the same model. As an app developer, you control two primary process types: **main** and **renderer**.
+
+## The main process
+
+Each Electron app has exactly one main process, which serves as the application's entry point. It runs in a Node.js environment, giving it full access to Node.js APIs and the ability to `require` modules.
+
+### Window management
+
+The main process creates and manages application windows using the [`BrowserWindow`](/api/browser-window) module. Each `BrowserWindow` instance spawns its own renderer process to display web content.
+
+```js title="main.js"
+const { BrowserWindow } = require('electron')
+
+const win = new BrowserWindow({ width: 800, height: 1500 })
+win.loadURL('https://github.com')
+
+const contents = win.webContents
+console.log(contents)
+```
+
+You interact with a window's web content from the main process through the `webContents` object. When a `BrowserWindow` instance is destroyed, its corresponding renderer process is terminated as well.
+
+Because `BrowserWindow` is an `EventEmitter`, you can attach handlers for user events like minimizing or maximizing:
+
+```js title="main.js"
+win.on('minimize', () => {
+  console.log('Window minimized')
+})
+```
+
+### Application lifecycle
+
+The main process controls the app's lifecycle through Electron's [`app`](/api/app) module, which provides events and methods for custom behavior:
+
+```js title="main.js"
+// Quit when all windows are closed (except on macOS)
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit()
+})
+```
+
+### Native APIs
+
+The main process also has access to native desktop functionality — menus, dialogs, tray icons, and more. These are only accessible from the main process, not from renderer processes directly.
+
+## The renderer process
+
+Each open `BrowserWindow` spawns its own renderer process. The renderer is responsible for displaying web content and runs in a browser-like environment — not a Node.js one.
+
+This means renderer process code follows web standards:
+
+- An HTML file is the entry point
+- UI styling comes from CSS
+- JavaScript runs via `<script>` elements
+
+Renderer processes do **not** have direct access to `require` or other Node.js APIs. To use npm packages in a renderer, you must use a bundler like webpack or Parcel, just as you would on the web.
+
+<Warning>
+  Renderer processes can be spawned with a full Node.js environment, but this is disabled by default for security reasons. Avoid enabling it unless you fully understand the implications.
+</Warning>
+
+## Preload scripts
+
+Preload scripts run in the renderer context before web content loads. They have access to Node.js APIs, which makes them the bridge between the privileged main process and the unprivileged renderer.
+
+You attach a preload script in the `BrowserWindow` constructor:
+
+```js title="main.js"
+const { BrowserWindow } = require('electron')
+
+const win = new BrowserWindow({
+  webPreferences: {
+    preload: 'path/to/preload.js'
+  }
+})
+```
+
+Although preload scripts share a `window` global with the renderer, you cannot directly assign variables to `window` due to [context isolation](/concepts/context-isolation) being enabled by default:
+
+<CodeGroup>
+
+```js title="preload.js (broken)"
+// This does NOT work — contextIsolation blocks direct window assignments
+window.myAPI = {
+  desktop: true
+}
+```
+
+```js title="renderer.js"
+console.log(window.myAPI)
+// => undefined
+```
+
+</CodeGroup>
+
+Instead, use the [`contextBridge`](/api/context-bridge) module to safely expose APIs:
+
+<CodeGroup>
+
+```js title="preload.js"
+const { contextBridge } = require('electron')
+
+contextBridge.exposeInMainWorld('myAPI', {
+  desktop: true
+})
+```
+
+```js title="renderer.js"
+console.log(window.myAPI)
+// => { desktop: true }
+```
+
+</CodeGroup>
+
+This pattern is how you expose [`ipcRenderer`](/api/ipc-renderer) helpers to trigger main process tasks from the renderer. See [Inter-Process Communication](/concepts/ipc) for details.
+
+## The utility process
+
+The main process can spawn multiple child processes using the [`UtilityProcess`](/api/utility-process) API. Utility processes run in a Node.js environment and are suited for:
+
+- CPU-intensive tasks
+- Crash-prone components
+- Untrusted services
+
+The key advantage over Node.js's `child_process.fork` is that a utility process can establish communication channels with renderer processes using [`MessagePort`](https://developer.mozilla.org/en-US/docs/Web/API/MessagePort).
+
+<Tip>
+  Prefer `UtilityProcess` over `child_process.fork` when you need to spawn child processes from the main process — it integrates more cleanly with Electron's architecture.
+</Tip>
+
+## Architecture overview
+
+<CardGroup cols={3}>
+  <Card title="Main process" icon="server">
+    One per app. Manages windows, the app lifecycle, and native OS APIs. Runs in Node.js.
+  </Card>
+  <Card title="Renderer process" icon="browser">
+    One per `BrowserWindow`. Displays web content. Follows web standards — no direct Node.js access.
+  </Card>
+  <Card title="Utility process" icon="gear">
+    Optional child processes for background work. Runs in Node.js and can communicate with renderers via `MessagePort`.
+  </Card>
+</CardGroup>
+
+## TypeScript subpath imports
+
+Electron's npm package exports TypeScript-specific subpaths that provide type definitions scoped to each process context:
+
+| Import path | Types included |
+|---|---|
+| `electron/main` | Main process modules only |
+| `electron/renderer` | Renderer process modules only |
+| `electron/common` | Modules available in both main and renderer |
+
+These subpaths have no runtime effect — they exist purely for type checking and IDE autocomplete:
+
+```js title="Usage example"
+const { shell } = require('electron/common')
+const { app } = require('electron/main')
+```
+
+<Note>
+  Importing from `electron/main` in a renderer process (or vice versa) won't cause a runtime error, but your type checker will catch the mistake.
+</Note>

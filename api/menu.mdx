@@ -1,0 +1,133 @@
+---
+title: Menu
+description: Create application menus and context menus in the main process.
+---
+
+The `Menu` class lets you build native application menus (the menu bar) and context menus. On macOS the application menu appears in the system menu bar; on Windows and Linux it appears at the top of each window.
+
+<Note>
+  `Menu` is only available in the **main process**.
+</Note>
+
+## Static methods
+
+### `Menu.setApplicationMenu(menu)`
+
+Sets the global application menu. Pass `null` to remove the menu bar entirely (Windows and Linux only).
+
+<ParamField path="menu" type="Menu | null" required>
+  The menu to set as the application menu, or `null` to remove it.
+</ParamField>
+
+<Note>
+  If you never call `setApplicationMenu`, Electron creates a default menu with File, Edit, View, Window, and Help entries.
+</Note>
+
+### `Menu.getApplicationMenu()`
+
+Returns `Menu | null` — the currently set application menu, or `null` if none is set.
+
+### `Menu.buildFromTemplate(template)`
+
+Builds a `Menu` from an array of `MenuItemConstructorOptions` objects. This is the most common way to construct a menu.
+
+<ParamField path="template" type="(MenuItemConstructorOptions | MenuItem)[]" required>
+  Array of menu item descriptors. Each entry supports `label`, `role`, `type`, `accelerator`, `click`, `submenu`, and more.
+</ParamField>
+
+Returns `Menu`.
+
+## Instance methods
+
+### `menu.popup([options])`
+
+Shows the menu as a context menu relative to the focused window.
+
+<ParamField path="options.window" type="BaseWindow">
+  The window to pop up relative to. Defaults to the focused window.
+</ParamField>
+<ParamField path="options.x" type="number">
+  X position of the menu. Requires `y` to also be set.
+</ParamField>
+<ParamField path="options.y" type="number">
+  Y position of the menu. Requires `x` to also be set.
+</ParamField>
+<ParamField path="options.callback" type="Function">
+  Called when the menu is closed.
+</ParamField>
+
+### `menu.closePopup([window])`
+
+Closes an open context menu.
+
+### `menu.append(menuItem)`
+
+Appends a `MenuItem` to the end of the menu.
+
+### `menu.insert(pos, menuItem)`
+
+<ParamField path="pos" type="Integer" required>
+  Zero-based position at which to insert the item.
+</ParamField>
+<ParamField path="menuItem" type="MenuItem" required>
+  The item to insert.
+</ParamField>
+
+### `menu.getMenuItemById(id)`
+
+Returns `MenuItem | null` — looks up a menu item by its `id` string.
+
+## Instance properties
+
+### `menu.items`
+
+A `MenuItem[]` array of the menu's top-level items.
+
+## Example
+
+```javascript main.js
+const { app, Menu } = require('electron')
+
+const template = [
+  {
+    label: 'File',
+    submenu: [
+      { role: 'quit' },
+    ],
+  },
+  {
+    label: 'Edit',
+    submenu: [
+      { role: 'undo' },
+      { role: 'redo' },
+      { type: 'separator' },
+      { role: 'cut' },
+      { role: 'copy' },
+      { role: 'paste' },
+    ],
+  },
+  {
+    label: 'View',
+    submenu: [
+      { role: 'reload' },
+      { role: 'toggleDevTools' },
+      { type: 'separator' },
+      { role: 'togglefullscreen' },
+    ],
+  },
+]
+
+app.whenReady().then(() => {
+  const menu = Menu.buildFromTemplate(template)
+  Menu.setApplicationMenu(menu)
+})
+```
+
+<Tip>
+  Use `role` values like `'quit'`, `'undo'`, `'copy'`, and `'toggleDevTools'` to get platform-native labels and keyboard shortcuts automatically.
+</Tip>
+
+## Related APIs
+
+- [app](/api/app) — application lifecycle
+- [BrowserWindow](/api/browser-window) — show context menus from renderer events

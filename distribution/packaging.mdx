@@ -1,0 +1,147 @@
+---
+title: "Packaging Your App"
+description: "Bundle your app into a distributable using Electron Forge"
+---
+
+Electron does not include packaging or distribution tooling in its core modules. To ship your app to users, you need to bundle your source code, assets, and the Electron binary together into a platform-native distributable — a format users can download and install.
+
+[Electron Forge](https://www.electronforge.io) is the recommended tool for this. It combines `@electron/packager`, `@electron/osx-sign`, `electron-winstaller`, and other tools into a single interface so you do not need to configure each one separately.
+
+## Complete packaging workflow
+
+<Steps>
+  <Step title="Install Electron Forge">
+    Add the Forge CLI to your project's dev dependencies, then run its import script to migrate your existing project:
+
+    <Tabs>
+      <Tab title="npm">
+        ```bash
+        npm install --save-dev @electron-forge/cli
+        npx electron-forge import
+        ```
+      </Tab>
+      <Tab title="yarn">
+        ```bash
+        yarn add --dev @electron-forge/cli
+        yarn electron-forge import
+        ```
+      </Tab>
+    </Tabs>
+
+    The import script adds `start`, `package`, and `make` scripts to your `package.json` and creates a `forge.config.js` with default makers for each target platform.
+  </Step>
+
+  <Step title="Configure forge.config.js">
+    Open `forge.config.js` at the root of your project. This file controls how your app is packaged and which installer formats are produced. A typical configuration looks like this:
+
+    ```javascript forge.config.js
+    module.exports = {
+      packagerConfig: {
+        asar: true,
+        name: 'My App',
+        executableName: 'my-app',
+        icon: './assets/icons/icon',
+      },
+      makers: [
+        {
+          name: '@electron-forge/maker-squirrel',
+          config: {
+            name: 'my_app',
+          },
+        },
+        {
+          name: '@electron-forge/maker-zip',
+          platforms: ['darwin'],
+        },
+        {
+          name: '@electron-forge/maker-dmg',
+          config: {
+            format: 'ULFO',
+          },
+        },
+        {
+          name: '@electron-forge/maker-deb',
+          config: {},
+        },
+        {
+          name: '@electron-forge/maker-rpm',
+          config: {},
+        },
+      ],
+    }
+    ```
+
+    Each entry in `makers` produces one distributable format. You can include multiple makers and Forge runs each one for its target platform.
+  </Step>
+
+  <Step title="Run npm run make">
+    Build your distributables with:
+
+    ```bash
+    npm run make
+    ```
+
+    This command runs two steps internally:
+
+    1. `electron-forge package` — Bundles your app code with the Electron binary into a folder.
+    2. `electron-forge make` — Passes the packaged folder to each configured maker to produce the final installer files.
+
+    When the command finishes, you will find your distributables in the `out/make/` directory:
+
+    ```plaintext
+    out/
+    ├── make/
+    │   ├── zip/darwin/x64/my-app-darwin-x64-1.0.0.zip
+    │   ├── deb/x64/my-app_1.0.0_amd64.deb
+    │   └── rpm/x64/my-app-1.0.0-1.x86_64.rpm
+    └── my-app-darwin-x64/
+        └── my-app.app/
+    ```
+  </Step>
+</Steps>
+
+## Makers
+
+Makers are Forge plugins that produce a specific installer or archive format. You configure them in the `makers` array of `forge.config.js`.
+
+| Maker | Platform | Output |
+|---|---|---|
+| `@electron-forge/maker-squirrel` | Windows | Squirrel.Windows installer (`.exe`, `.nupkg`) |
+| `@electron-forge/maker-dmg` | macOS | Disk image (`.dmg`) |
+| `@electron-forge/maker-zip` | macOS / Windows | ZIP archive |
+| `@electron-forge/maker-deb` | Linux | Debian package (`.deb`) |
+| `@electron-forge/maker-rpm` | Linux | RPM package (`.rpm`) |
+| `@electron-forge/maker-wix` | Windows | WiX MSI installer (`.msi`) |
+
+<Tip>
+You can configure multiple makers in one project. Forge runs each maker only on its target platform, so running `npm run make` on macOS will produce only macOS distributables even if Windows makers are configured.
+</Tip>
+
+## ASAR archives
+
+Setting `asar: true` in `packagerConfig` causes Forge to pack your app's source files into an ASAR archive — a single-file format similar to a tar archive. This offers several advantages:
+
+- Reduces the number of files on disk, which speeds up Windows Defender scans and app startup on some systems.
+- Slightly obscures source code from casual inspection (though ASAR is not encryption).
+- Works transparently with Node.js `require` — you do not need to change your code.
+
+```javascript forge.config.js
+module.exports = {
+  packagerConfig: {
+    asar: true,
+  },
+  // ...
+}
+```
+
+<Warning>
+Some native Node modules do not work correctly inside ASAR archives. If you use native modules, test your packaged app carefully. You can unpack specific files using `asarUnpack` in `packagerConfig`.
+</Warning>
+
+## Next steps
+
+After packaging your app, sign it so that macOS and Windows allow users to install it without security warnings.
+
+<Card title="Code signing" icon="shield-check" href="/distribution/code-signing">
+  Sign your app with a Developer ID certificate on macOS and an EV certificate on Windows.
+</Card>

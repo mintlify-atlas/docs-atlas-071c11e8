@@ -1,0 +1,226 @@
+---
+title: "Performance"
+description: "Optimize your Electron app's startup time and runtime performance"
+---
+
+Performance means different things in different contexts. For Electron apps, it covers memory usage, CPU load, disk access, and—above all—responsiveness to user input. The recommendations below are drawn from real-world experience optimizing apps like Visual Studio Code and Slack.
+
+<Warning>
+  Following every recommendation on this page does not guarantee a fast app. Performance is a product of profiling, measuring, and iterating—not a checklist you complete once.
+</Warning>
+
+## Measure first
+
+Before optimizing anything, profile your app. Find the actual bottlenecks rather than guessing.
+
+```sh
+# Generate CPU and heap profiles for a module require
+node --cpu-prof --heap-prof -e "require('your-module')"
+```
+
+Open the resulting `.cpuprofile` and `.heapprofile` files in Chrome DevTools under the **Performance** and **Memory** tabs. For multi-process analysis, use [Chrome Tracing](https://www.chromium.org/developers/how-tos/trace-event-profiling-tool).
+
+<Tip>
+  Use the **Network** tab in DevTools with **Disable cache** enabled to audit every resource your renderer downloads. Switch to **Fast 3G** throttling to surface unnecessary blocking requests.
+</Tip>
+
+## Recommendations
+
+<AccordionGroup>
+  <Accordion title="1. Audit your dependencies before adding them" icon="magnifying-glass">
+    Every module you `require()` has a cost. Before adding a dependency, check:
+
+    - Total size of its dependency tree
+    - How long `require()` takes (use CPU profiling)
+    - How much memory it consumes at load time
+
+    ```sh
+    node --cpu-prof --heap-prof -e "require('some-module')"
+    ```
+
+    A module that works well in a long-running Node.js server process may load large JSON files or establish connections at startup—behavior that is acceptable on a server but harmful on the critical path of your app's launch.
+
+    <Warning>
+      Download count and GitHub stars are poor proxies for startup cost. A highly popular module can still be slow to load.
+    </Warning>
+  </Accordion>
+
+  <Accordion title="2. Defer loading and execution" icon="clock">
+    Do not load modules or run expensive operations until they are actually needed. Allocate resources just-in-time rather than at startup.
+
+    <CodeGroup>
+
+    ```js eager-loading.js
+    // Avoid: everything runs at require() time
+    const fs = require('node:fs')
+    const fooParser = require('foo-parser')
+
+    class Parser {
+      constructor() {
+        this.files = fs.readdirSync('.')
+      }
+
+      getParsedFiles() {
+        return fooParser.parse(this.files)
+      }
+    }
+
+    const parser = new Parser()
+    module.exports = { parser }
+    ```
+
+    ```js lazy-loading.js
+    // Prefer: load and execute only when needed
+    const fs = require('node:fs')
+
+    class Parser {
+      async getFiles() {
+        // Read the disk when getFiles() is called, not sooner.
+        // Use the async version to avoid blocking.
+        this.files = this.files || await fs.promises.readdir('.')
+        return this.files
+      }
+
+      async getParsedFiles() {
+        // foo-parser is expensive—defer it until we need it.
+        // require() is cached, so subsequent calls are cheap.
+        const fooParser = require('foo-parser')
+        const files = await this.getFiles()
+        return fooParser.parse(files)
+      }
+    }
+
+    const parser = new Parser()
+    module.exports = { parser }
+    ```
+
+    </CodeGroup>
+
+    <Note>
+      `require()` results are cached by Node.js. The first call is expensive; subsequent calls to the same module path are fast.
+    </Note>
+  </Accordion>
+
+  <Accordion title="3. Never block the main process" icon="ban">
+    The main process is the control tower for your entire app. It handles windows, OS interactions, IPC, and the UI thread. Blocking it freezes your whole application.
+
+    Follow these rules in the main process:
+
+    - Use [worker threads](https://nodejs.org/api/worker_threads.html) or a dedicated renderer for CPU-intensive work.
+    - Prefer async APIs over synchronous ones for all I/O (`fs.promises.readFile` instead of `fs.readFileSync`).
+    - Avoid synchronous IPC and `@electron/remote` in hot code paths—both can stall the UI thread without obvious stack traces.
+
+    ```js main.js
+    const { Worker } = require('node:worker_threads')
+
+    // Offload CPU-heavy work to a worker thread
+    function runHeavyTask(data) {
+      return new Promise((resolve, reject) => {
+        const worker = new Worker('./heavy-task.js', { workerData: data })
+        worker.on('message', resolve)
+        worker.on('error', reject)
+      })
+    }
+    ```
+
+    <Warning>
+      Synchronous IPC (`ipcRenderer.sendSync`) blocks the renderer until the main process replies. A slow main-process handler will freeze the UI for every caller.
+    </Warning>
+  </Accordion>
+
+  <Accordion title="4. Keep the renderer process responsive" icon="gauge">
+    The renderer runs your UI. Expensive JavaScript in the renderer causes dropped frames, janky scrolling, and sluggish input.
+
+    Use the platform APIs designed for this:
+
+    ```js renderer.js
+    // For short, low-priority background work
+    requestIdleCallback(() => {
+      // runs when the browser is idle—won't compete with animations
+      updateAnalytics()
+    })
+    ```
+
+    ```js renderer.js
+    // For long-running computation—move it off the main thread entirely
+    const worker = new Worker('./compute.js')
+
+    worker.postMessage({ input: largeDataset })
+
+    worker.onmessage = (event) => {
+      displayResults(event.data)
+    }
+    ```
+
+    <Tip>
+      `requestIdleCallback()` is ideal for telemetry, analytics, and other work that does not need to happen immediately. Web Workers are the right tool for sustained computation like parsing, compression, or image processing.
+    </Tip>
+  </Accordion>
+
+  <Accordion title="5. Remove unnecessary polyfills" icon="trash">
+    Electron ships with a specific, known version of Chromium. You do not need to polyfill features that Chromium already supports natively.
+
+    Check [caniuse.com](https://caniuse.com) against the Chromium version bundled in your Electron release before including any polyfill library.
+
+    Common culprits:
+    - `regenerator-runtime` for `async/await` (supported natively)
+    - jQuery for DOM queries (`document.querySelector` is standard)
+    - CSS vendor prefixes for properties Chromium supports unprefixed
+
+    If you use TypeScript, set `target` in `tsconfig.json` to match the ECMAScript version your Electron version supports—this prevents unnecessary transpilation output.
+  </Accordion>
+
+  <Accordion title="6. Bundle static assets instead of fetching them" icon="box">
+    Network requests add latency that is variable and outside your control. For resources that do not change between releases, include them in your app bundle instead.
+
+    Common candidates:
+    - Web fonts (e.g., Google Fonts)
+    - Icon sets
+    - Static JSON data
+
+    To audit your network usage, open DevTools → **Network** tab → enable **Disable cache** → reload. Sort by size and identify anything large and static.
+
+    <Note>
+      For resources that you do need to update without shipping a new version, consider using [Service Workers](https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API) for fine-grained cache control.
+    </Note>
+  </Accordion>
+
+  <Accordion title="7. Bundle your JavaScript" icon="package">
+    Each `require()` call has overhead: Node.js must resolve the module path, check the cache, and potentially read from disk. With many files, this adds up.
+
+    Bundle your application code into a single file so the `require()` overhead is paid only once at startup.
+
+    Popular bundlers that handle Electron's dual Node.js + browser environment:
+
+    <CardGroup cols={3}>
+      <Card title="Webpack" icon="layer-group" href="https://webpack.js.org/">
+        Mature, highly configurable bundler with a large plugin ecosystem.
+      </Card>
+      <Card title="Parcel" icon="box-open" href="https://parceljs.org/">
+        Zero-config bundler with fast builds and good defaults.
+      </Card>
+      <Card title="Rollup" icon="scroll" href="https://rollupjs.org/">
+        Focused on ES modules and produces smaller output for libraries.
+      </Card>
+    </CardGroup>
+  </Accordion>
+
+  <Accordion title="8. Disable the default menu if you don't need it" icon="bars">
+    Electron creates a default application menu at startup. If your app uses a custom menu or a frameless window, building the default menu wastes time.
+
+    ```js main.js
+    const { app, Menu } = require('electron')
+
+    // Call this before app.on('ready') to skip default menu creation
+    Menu.setApplicationMenu(null)
+
+    app.on('ready', () => {
+      // your setup here
+    })
+    ```
+
+    <Note>
+      This must be called before the `ready` event fires. Calling it afterward has no effect on startup time.
+    </Note>
+  </Accordion>
+</AccordionGroup>
